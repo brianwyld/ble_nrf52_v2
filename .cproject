@@ -1,0 +1,436 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?fileVersion 4.0.0?><cproject storage_type_id="org.eclipse.cdt.core.XmlProjectDescriptionStorage">
+    	
+    <storageModule moduleId="org.eclipse.cdt.core.settings">
+        		
+        <cconfiguration id="cdt.managedbuild.config.gnu.mingw.exe.debug.36603320">
+            			
+            <storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="cdt.managedbuild.config.gnu.mingw.exe.debug.36603320" moduleId="org.eclipse.cdt.core.settings" name="Debug">
+                				
+                <externalSettings/>
+                				
+                <extensions>
+                    					
+                    <extension id="org.eclipse.cdt.core.PE64" point="org.eclipse.cdt.core.BinaryParser"/>
+                    					
+                    <extension id="org.eclipse.cdt.core.GASErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+                    					
+                    <extension id="org.eclipse.cdt.core.GLDErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+                    					
+                    <extension id="org.eclipse.cdt.core.GCCErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+                    				
+                </extensions>
+                			
+            </storageModule>
+            			
+            <storageModule moduleId="cdtBuildSystem" version="4.0.0">
+                				
+                <configuration artifactName="${ProjName}" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe,org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug" cleanCommand="rm -rf" description="" id="cdt.managedbuild.config.gnu.mingw.exe.debug.36603320" name="Debug" optionalBuildProperties="" parent="cdt.managedbuild.config.gnu.mingw.exe.debug">
+                    					
+                    <folderInfo id="cdt.managedbuild.config.gnu.mingw.exe.debug.36603320." name="/" resourcePath="">
+                        						
+                        <toolChain id="cdt.managedbuild.toolchain.gnu.mingw.exe.debug.1877330414" name="MinGW GCC" superClass="cdt.managedbuild.toolchain.gnu.mingw.exe.debug">
+                            							
+                            <targetPlatform id="cdt.managedbuild.target.gnu.platform.mingw.exe.debug.22948233" name="Debug Platform" superClass="cdt.managedbuild.target.gnu.platform.mingw.exe.debug"/>
+                            							
+                            <builder buildPath="${workspace_loc:/ble_2k20}/Debug" id="org.eclipse.cdt.build.core.internal.builder.626134561" keepEnvironmentInBuildfile="false" name="CDT Internal Builder" superClass="org.eclipse.cdt.build.core.internal.builder"/>
+                            							
+                            <tool id="cdt.managedbuild.tool.gnu.assembler.mingw.exe.debug.560445100" name="GCC Assembler" superClass="cdt.managedbuild.tool.gnu.assembler.mingw.exe.debug">
+                                								
+                                <inputType id="cdt.managedbuild.tool.gnu.assembler.input.423736310" superClass="cdt.managedbuild.tool.gnu.assembler.input"/>
+                                							
+                            </tool>
+                            							
+                            <tool id="cdt.managedbuild.tool.gnu.archiver.mingw.base.929496956" name="GCC Archiver" superClass="cdt.managedbuild.tool.gnu.archiver.mingw.base"/>
+                            							
+                            <tool id="cdt.managedbuild.tool.gnu.cpp.compiler.mingw.exe.debug.873530597" name="GCC C++ Compiler" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.mingw.exe.debug">
+                                								
+                                <option id="gnu.cpp.compiler.mingw.exe.debug.option.optimization.level.1051574677" name="Optimization Level" superClass="gnu.cpp.compiler.mingw.exe.debug.option.optimization.level" useByScannerDiscovery="false" value="gnu.cpp.compiler.optimization.level.none" valueType="enumerated"/>
+                                								
+                                <option defaultValue="gnu.cpp.compiler.debugging.level.max" id="gnu.cpp.compiler.mingw.exe.debug.option.debugging.level.236226210" name="Debug Level" superClass="gnu.cpp.compiler.mingw.exe.debug.option.debugging.level" useByScannerDiscovery="false" valueType="enumerated"/>
+                                							
+                            </tool>
+                            							
+                            <tool id="cdt.managedbuild.tool.gnu.c.compiler.mingw.exe.debug.163285653" name="GCC C Compiler" superClass="cdt.managedbuild.tool.gnu.c.compiler.mingw.exe.debug">
+                                								
+                                <option defaultValue="gnu.c.optimization.level.none" id="gnu.c.compiler.mingw.exe.debug.option.optimization.level.326858949" name="Optimization Level" superClass="gnu.c.compiler.mingw.exe.debug.option.optimization.level" useByScannerDiscovery="false" valueType="enumerated"/>
+                                								
+                                <option defaultValue="gnu.c.debugging.level.max" id="gnu.c.compiler.mingw.exe.debug.option.debugging.level.2027623930" name="Debug Level" superClass="gnu.c.compiler.mingw.exe.debug.option.debugging.level" useByScannerDiscovery="false" valueType="enumerated"/>
+                                								
+                                <inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1781832191" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
+                                							
+                            </tool>
+                            							
+                            <tool id="cdt.managedbuild.tool.gnu.c.linker.mingw.exe.debug.1836565776" name="MinGW C Linker" superClass="cdt.managedbuild.tool.gnu.c.linker.mingw.exe.debug">
+                                								
+                                <inputType id="cdt.managedbuild.tool.gnu.c.linker.input.870860279" superClass="cdt.managedbuild.tool.gnu.c.linker.input">
+                                    									
+                                    <additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
+                                    									
+                                    <additionalInput kind="additionalinput" paths="$(LIBS)"/>
+                                    								
+                                </inputType>
+                                							
+                            </tool>
+                            							
+                            <tool id="cdt.managedbuild.tool.gnu.cpp.linker.mingw.exe.debug.1296053019" name="MinGW C++ Linker" superClass="cdt.managedbuild.tool.gnu.cpp.linker.mingw.exe.debug"/>
+                            						
+                        </toolChain>
+                        					
+                    </folderInfo>
+                    				
+                </configuration>
+                			
+            </storageModule>
+            			
+            <storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>
+            		
+        </cconfiguration>
+        		
+        <cconfiguration id="cdt.managedbuild.config.gnu.mingw.exe.release.614133750">
+            			
+            <storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="cdt.managedbuild.config.gnu.mingw.exe.release.614133750" moduleId="org.eclipse.cdt.core.settings" name="Release">
+                				
+                <externalSettings/>
+                				
+                <extensions>
+                    					
+                    <extension id="org.eclipse.cdt.core.PE64" point="org.eclipse.cdt.core.BinaryParser"/>
+                    					
+                    <extension id="org.eclipse.cdt.core.GASErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+                    					
+                    <extension id="org.eclipse.cdt.core.GLDErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+                    					
+                    <extension id="org.eclipse.cdt.core.GCCErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+                    				
+                </extensions>
+                			
+            </storageModule>
+            			
+            <storageModule moduleId="cdtBuildSystem" version="4.0.0">
+                				
+                <configuration artifactName="${ProjName}" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe,org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.release" cleanCommand="rm -rf" description="" id="cdt.managedbuild.config.gnu.mingw.exe.release.614133750" name="Release" optionalBuildProperties="org.eclipse.cdt.docker.launcher.containerbuild.property.selectedvolumes=,org.eclipse.cdt.docker.launcher.containerbuild.property.volumes=" parent="cdt.managedbuild.config.gnu.mingw.exe.release">
+                    					
+                    <folderInfo id="cdt.managedbuild.config.gnu.mingw.exe.release.614133750." name="/" resourcePath="">
+                        						
+                        <toolChain id="cdt.managedbuild.toolchain.gnu.mingw.exe.release.753875525" name="MinGW GCC" superClass="cdt.managedbuild.toolchain.gnu.mingw.exe.release">
+                            							
+                            <targetPlatform id="cdt.managedbuild.target.gnu.platform.mingw.exe.release.21868141" name="Debug Platform" superClass="cdt.managedbuild.target.gnu.platform.mingw.exe.release"/>
+                            							
+                            <builder buildPath="${workspace_loc:/ble_2k20}/Release" id="org.eclipse.linuxtools.cdt.autotools.core.toolchain.builder.609899122" keepEnvironmentInBuildfile="false" name="Autotools Makefile Generator" superClass="org.eclipse.linuxtools.cdt.autotools.core.toolchain.builder"/>
+                            							
+                            <tool id="cdt.managedbuild.tool.gnu.assembler.mingw.exe.release.275456768" name="GCC Assembler" superClass="cdt.managedbuild.tool.gnu.assembler.mingw.exe.release">
+                                								
+                                <inputType id="cdt.managedbuild.tool.gnu.assembler.input.1047637738" superClass="cdt.managedbuild.tool.gnu.assembler.input"/>
+                                							
+                            </tool>
+                            							
+                            <tool id="cdt.managedbuild.tool.gnu.archiver.mingw.base.1660912845" name="GCC Archiver" superClass="cdt.managedbuild.tool.gnu.archiver.mingw.base"/>
+                            							
+                            <tool id="cdt.managedbuild.tool.gnu.cpp.compiler.mingw.exe.release.1665114991" name="GCC C++ Compiler" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.mingw.exe.release">
+                                								
+                                <option id="gnu.cpp.compiler.mingw.exe.release.option.optimization.level.1509827426" name="Optimization Level" superClass="gnu.cpp.compiler.mingw.exe.release.option.optimization.level" useByScannerDiscovery="false" value="gnu.cpp.compiler.optimization.level.most" valueType="enumerated"/>
+                                								
+                                <option defaultValue="gnu.cpp.compiler.debugging.level.none" id="gnu.cpp.compiler.mingw.exe.release.option.debugging.level.442383151" name="Debug Level" superClass="gnu.cpp.compiler.mingw.exe.release.option.debugging.level" useByScannerDiscovery="false" valueType="enumerated"/>
+                                							
+                            </tool>
+                            							
+                            <tool id="cdt.managedbuild.tool.gnu.c.compiler.mingw.exe.release.335334295" name="GCC C Compiler" superClass="cdt.managedbuild.tool.gnu.c.compiler.mingw.exe.release">
+                                								
+                                <option defaultValue="gnu.c.optimization.level.most" id="gnu.c.compiler.mingw.exe.release.option.optimization.level.331887613" name="Optimization Level" superClass="gnu.c.compiler.mingw.exe.release.option.optimization.level" useByScannerDiscovery="false" value="gnu.c.optimization.level.none" valueType="enumerated"/>
+                                								
+                                <option defaultValue="gnu.c.debugging.level.none" id="gnu.c.compiler.mingw.exe.release.option.debugging.level.922808544" name="Debug Level" superClass="gnu.c.compiler.mingw.exe.release.option.debugging.level" useByScannerDiscovery="false" valueType="enumerated"/>
+                                								
+                                <option id="gnu.c.compiler.option.dialect.std.658843872" name="Language standard" superClass="gnu.c.compiler.option.dialect.std" useByScannerDiscovery="true" value="gnu.c.compiler.dialect.default" valueType="enumerated"/>
+                                								
+                                <option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="gnu.c.compiler.option.include.paths.1656801969" name="Include paths (-I)" superClass="gnu.c.compiler.option.include.paths" useByScannerDiscovery="false" valueType="includePath">
+                                    									
+                                    <listOptionValuebuiltIn="false" value="&quot;./includes&quot;"/>
+									
+									<listOptionValuebuiltIn="false" value="&quot;./config&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_advertising&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_db_discovery&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_dtm&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_racp&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_ancs_c&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_ans_c&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_bas&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_bas_c&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_cscs&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_cts_c&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_dfu&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_dis&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_gls&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_hids&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_hrs&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_hrs_c&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_hts&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_ias&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_ias_c&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_lbs&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_lbs_c&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_lls&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_nus&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_nus_c&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_rscs&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/ble_services/ble_rscs_c&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/common&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/nrf_ble_qwr&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/ble/peer_manager&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/boards&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/device&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/adc&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/clock&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/common&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/comp&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/delay&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/gpiote&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/hal&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/i2s&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/lpcomp&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/pdm&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/powerppi&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/pwm&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/qdec&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/rng&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/rtc&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/saadc&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/spi_master&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/spi_slave&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/swi&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/timer&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/twi_master&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/twis_slave&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/uart&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/usbd&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/drivers_nrf/wdt&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/bsp&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/button&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/crc16&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/crc32&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/csense&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/csense_drv&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/experimental_section_vars&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/fds&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/fifo&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/fstorage&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/gpiote&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/hardfault&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/hci&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/led_softblink&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/log&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/log/src&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/low_power_pwm&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/mem_manager&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/pwm&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/queue&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/scheduler&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/slip&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/timer&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/twi&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/uart&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/usbd&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/usbd/class/audio&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/usbd/class/cdc&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/usbd/class/cdc/acm&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/usbd/class/hid&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/usbd/class/hid/generic&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/usbd/class/hid/kbd&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/usbd/class/hid/mouse&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/usbd/class/msc&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/usbd/config&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/libraries/util&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/softdevice/common/softdevice_handler&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/softdevice/s130/headers&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/softdevice/s130/headers/nrf51&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/toolchain&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/toolchain/arm&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/toolchain/gcc&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/toolchain/CMSIS/Include&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./components/toolchain/gcc&quot;"/>
+																		
+									<listOptionValuebuiltIn="false" value="&quot;./external/segger_rtt&quot;"/>			
+									
+                                </option>
+                                								
+                                <inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.399909002" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
+                                							
+                            </tool>
+                            							
+                            <tool id="cdt.managedbuild.tool.gnu.c.linker.mingw.exe.release.2123854653" name="MinGW C Linker" superClass="cdt.managedbuild.tool.gnu.c.linker.mingw.exe.release">
+                                								
+                                <option id="gnu.c.link.option.ldflags.571364624" name="Linker flags" superClass="gnu.c.link.option.ldflags" useByScannerDiscovery="false" value="-T &quot;./linker/nrf51_xxac.ld&quot;" valueType="string"/>
+                                								
+                                <inputType id="cdt.managedbuild.tool.gnu.c.linker.input.1467227411" superClass="cdt.managedbuild.tool.gnu.c.linker.input">
+                                    									
+                                    <additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
+                                    									
+                                    <additionalInput kind="additionalinput" paths="$(LIBS)"/>
+                                    								
+                                </inputType>
+                                							
+                            </tool>
+                            							
+                            <tool id="cdt.managedbuild.tool.gnu.cpp.linker.mingw.exe.release.1601631181" name="MinGW C++ Linker" superClass="cdt.managedbuild.tool.gnu.cpp.linker.mingw.exe.release"/>
+                            						
+                        </toolChain>
+                        					
+                    </folderInfo>
+                    				
+                </configuration>
+                			
+            </storageModule>
+            			
+            <storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>
+            		
+        </cconfiguration>
+        	
+    </storageModule>
+    	
+    <storageModule moduleId="cdtBuildSystem" version="4.0.0">
+        		
+        <project id="ble_2k20.cdt.managedbuild.target.gnu.mingw.exe.1947149898" name="Executable" projectType="cdt.managedbuild.target.gnu.mingw.exe"/>
+        	
+    </storageModule>
+    	
+    <storageModule moduleId="scannerConfiguration">
+        		
+        <autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+        		
+        <scannerConfigBuildInfo instanceId="cdt.managedbuild.config.gnu.mingw.exe.release.614133750;cdt.managedbuild.config.gnu.mingw.exe.release.614133750.;cdt.managedbuild.tool.gnu.c.compiler.mingw.exe.release.335334295;cdt.managedbuild.tool.gnu.c.compiler.input.399909002">
+            			
+            <autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+            		
+        </scannerConfigBuildInfo>
+        		
+        <scannerConfigBuildInfo instanceId="cdt.managedbuild.config.gnu.mingw.exe.debug.36603320;cdt.managedbuild.config.gnu.mingw.exe.debug.36603320.;cdt.managedbuild.tool.gnu.c.compiler.mingw.exe.debug.163285653;cdt.managedbuild.tool.gnu.c.compiler.input.1781832191">
+            			
+            <autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+            		
+        </scannerConfigBuildInfo>
+        	
+    </storageModule>
+    	
+    <storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
+    	
+    <storageModule moduleId="org.eclipse.cdt.make.core.buildtargets"/>
+    	
+    <storageModule moduleId="refreshScope" versionNumber="2">
+        		
+        <configuration configurationName="Debug">
+            			
+            <resource resourceType="PROJECT" workspacePath="/ble_2k20"/>
+            		
+        </configuration>
+        		
+        <configuration configurationName="Release">
+            			
+            <resource resourceType="PROJECT" workspacePath="/ble_2k20"/>
+            		
+        </configuration>
+        	
+    </storageModule>
+    
+</cproject>

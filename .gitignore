@@ -1,0 +1,8 @@
+_build/
+*.c.o
+*.c.d
+*.s.o
+*.s.d
+external/
+GNU_Tools_Arm_Embedded/
+/Release/
