@@ -28,14 +28,6 @@
 extern "C" {
 #endif
 
-// Flash related constants for nRF51 with softdevice and app
-// TODO MAKE THE ADDRESSES RELATIVE TO MEMORY LAYOUT!
-#define FLASH_PAGE_SZ (0x400)           // 1K page size for erasure
-#define FLASH_START_ADDR (0x1b000)      // ie page 0. Defined ?
-#define FLASH_CONFIG_SZ (0x1000)      // 4K
-#define FLASH_CONFIG_BASE_ADDR (0x338A0) 
-#define FLASH_CONFIG_BASE_PAGE ((FLASH_CONFIG_BASE_ADDR - FLASH_START_ADDR)/FLASH_PAGE_SZ)        // This is our base page in the flash layout
-
 // Uart
 #define UART_CNT (1)            // nrf only has 1 uart block..
 #define UART0_RX_PIN_NUMBER (-1)
@@ -61,7 +53,7 @@ uint16_t hal_bsp_nvmSize();
 bool hal_bsp_uart_init(int uartNb, int baudrate, app_uart_event_handler_t uart_event_handler);
 void hal_bsp_uart_deinit(int uartNb);
 // Tx line to uart. returns number of bytes not sent due to flow control
-int hal_bsp_uart_tx(int uartNb, uint8_t d, int len);
+int hal_bsp_uart_tx(int uartNb, uint8_t* d, int len);
 // LED config
 void hal_bsp_leds_init(void);
 void hal_bsp_leds_deinit(void);

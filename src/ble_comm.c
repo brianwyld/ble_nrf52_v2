@@ -8,11 +8,13 @@
 #include "ble_nus.h"
 #include "ble_hci.h"
 
+#include "wutils.h"
+
 #include "main.h"
 #include "bsp_minew_nrf51.h"
+#include "at_process.h"
+#include "comm_ble.h"
 
-#define COMM_UART_NB    (0)
-#define COMM_UART_BAUDRATE  (115200)
 #define MAX_RX_LINE (100)
 
 static struct {
@@ -25,7 +27,7 @@ static struct {
 } _ctx;
 
 // predecs
-static void comm_ble_nus_data_handler(ble_nus_t * p_nus, uint8_t * p_data, uint16_t length)
+static void comm_ble_nus_data_handler(ble_nus_t * p_nus, uint8_t * p_data, uint16_t length);
 
 /**@brief Function for initializing the BLE as a NUS slave (remote connects to me) and a NUS cient.
  * NUS client not yet supported
@@ -78,6 +80,7 @@ void comm_ble_disconnect() {
     _ctx.rx_index = 0;
 }
 
+// Tx line. returns number of bytes not sent due to flow control or -1 for error 
 int comm_ble_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
     if (!_ctx.connected) {
         return -1;      // not connected, sorry
@@ -97,6 +100,7 @@ int comm_ble_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
         // disconnnect NUS
         comm_ble_disconnect(NULL);
     }
+    return 0;       // all sent
 }
 
 void comm_ble_dispatch(ble_evt_t * p_ble_evt) {
@@ -122,7 +126,7 @@ static void comm_ble_nus_data_handler(ble_nus_t * p_nus, uint8_t* p_data, uint16
         {
             _ctx.rx_buf[_ctx.rx_index] = 0; // null terminate the data in buffer
             // And process
-            at_process_input(_ctx.rx_buf, &comm_ble_tx);
+            at_process_input((char*)(&_ctx.rx_buf[0]), &comm_ble_tx);
             // reset our line buffer
             _ctx.rx_index = 0;
             // Continue for rest of data in input

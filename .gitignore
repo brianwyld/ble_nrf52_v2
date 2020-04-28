@@ -6,3 +6,5 @@ _build/
 external/
 GNU_Tools_Arm_Embedded/
 /Release/
+.obj/
+outputs/

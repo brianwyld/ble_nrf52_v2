@@ -11,11 +11,15 @@
  * language governing permissions and limitations under the License.
 */
 
-#include <stdio.h>
+#include <inttypes.h>
+#include <stdint.h>
 #include <stdarg.h>
+#include <stdbool.h>
+#include <string.h>
+#include <ctype.h>
 
-#include "wyres-generic/wutils.h"
-#include "uart.h"
+#include "wutils.h"
+#include "bsp_minew_nrf51.h"
 
 // assert gets stack to determine address of line that called it to dump in log
 // also write stack into prom for reboot analysis
@@ -25,9 +29,11 @@
  */
 void wassert_fn(const char* file, int lnum) {
     // see https://gcc.gnu.org/onlinedocs/gcc/Return-Address.html
-    void* assert_caller = 0;
-    assert_caller = __builtin_extract_return_addr(__builtin_return_address(0));
-    log_blocking_fn(1,"assert from [%8x] see APP.elf.lst", assert_caller);
+//    void* assert_caller = 0;
+//    assert_caller = __builtin_extract_return_addr(__builtin_return_address(0));
+//    log_blocking_fn(0,"assert from [%8x] see APP.elf.lst", assert_caller);
+    // reboot
+    // TODO
 }
 
 
@@ -41,19 +47,18 @@ static uint8_t _logLevel = LOGS_DEBUG;
 
 // Must be static buffer NOT ON STACK
 static char _buf[MAX_LOGSZ];
-static char _noutbuf[MAX_LOGSZ];        // for nout log
-static UART* _uartDev = NULL;
+static int _uartDev = -1;
 
 // note the doout is to allow to break here in debugger and see the log, without actually accessing UART
 static void do_log(char lev, const char* ls, va_list vl) {
     // protect here with a mutex?
     // level and timestamp
-    uint32_t now = TMMgr_getRelTimeMS();
+    uint32_t now = 0;       // TODO
     sprintf(_buf, "%c%03d.%1d:", lev, (int)((now/1000)%1000), (int)((now/100)%10));
     // add log
     vsprintf(_buf+7, ls, vl);
     // add CRLF to end, checking we didn't go off end
-    int len = strnlen(_buf, MAX_LOGSZ);
+    int len = strlen(_buf);     //, MAX_LOGSZ);
     if ((len+3)>=MAX_LOGSZ) {
         // oops might just have broken stuff... this is why _nooutbuf is just after _buf... gives some margin
         len=MAX_LOGSZ-3;
@@ -62,13 +67,13 @@ static void do_log(char lev, const char* ls, va_list vl) {
     _buf[len+1]='\r';
     _buf[len+2]='\0';
     len+=3;
-    if (_uartDev!=NULL) {
+    if (_uartDev>=0) {
         // Ensure its open (no effect if already open)
         if (log_init_uart()==0) {
-            int res = uart_write(_uartDev, (uint8_t*)_buf, len);
+            int res = hal_bsp_uart_tx(_uartDev, (uint8_t*)(&_buf[0]), len);
             if (res<0) {
                 _buf[0] = '*';
-                uart_write(_uartDev, (uint8_t*)_buf, 1);      // so user knows he missed something.
+                hal_bsp_uart_tx(_uartDev, (uint8_t*)(&_buf[0]), 1);      // so user knows he missed something.
                 // Not actually a lot we can do about this especially if its a flow control (SKT_NOSPACE) condition - ignore it
                log_noout_fn("log FAIL[%s]", _buf);      // just for debugger to watch
             }        
@@ -101,7 +106,7 @@ void set_log_level(uint8_t l) {
 }
 
 /* configure uart device for logging */
-void log_config_uart(UART* dev) {
+void log_config_uart(int dev) {
     _uartDev = dev;
 }
 /* open/init UART for logging */
@@ -152,24 +157,24 @@ void log_error_fn(const char* ls, ...) {
 void log_noout_fn(const char* ls, ...) {
     va_list vl;
     va_start(vl, ls);
-    vsprintf(_noutbuf, ls, vl);
-    // watch _noutbuf to see the log
-    int l = strlen(_noutbuf);
-    _noutbuf[l++] = '\n';
-    _noutbuf[l++] = '\r';
-    _noutbuf[l++] = '\0';
+    vsprintf(_buf, ls, vl);
+    // watch _buf to see the log
+    int l = strlen(_buf);
+    _buf[l++] = '\n';
+    _buf[l++] = '\r';
+    _buf[l++] = '\0';
     va_end(vl);
 }
 
 // Called from sysinit once uarts etc are up
-void wlog_init(void) {
+void wlog_init(int uartNb) {
     bool res = true;
     // no console
     // If specific device for logging, create its wskt driver driver
-    UART* u=uart_line_comm_create("uart2", 115200);
+    // Not available on nRF    UART* u=uart_line_comm_create("uart2", 115200);
     assert(res);
     // And tell logging to use it whenrequired
-    log_config_uart(u);  
+    log_config_uart(uartNb);  
     res=(log_init_uart()==0);    // kick it off
     assert(res);
 }
@@ -266,4 +271,26 @@ uint32_t Util_hashstrn(const char* s, int maxlen) {
     } 
 
     return h;
+}
+
+uint8_t Util_hexdigit( char hex )
+{
+    return (hex <= '9') ? hex - '0' : 
+                          toupper(hex) - 'A' + 10 ;
+}
+
+uint8_t Util_hexbyte( const char* hex )
+{
+    return (Util_hexdigit(*hex) << 4) | Util_hexdigit(*(hex+1));
+}
+/** convert a hex string to a byte array to avoid sscanf. Ensure 'out' is at least of size 'len'. Returns number of bytes successfully found */
+int Util_scanhex(char* in, int len, uint8_t* out) {
+    for(int i=0;i<len;i++) {
+        // Check chars are hex digits
+        if (!isxdigit(in[i*2]) || !isxdigit(in[i*2+1])) {
+            return i;
+        }
+        out[i] = Util_hexbyte(&in[i*2]);
+    }
+    return len;     // got them all
 }

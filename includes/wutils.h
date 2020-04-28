@@ -13,6 +13,12 @@
 #ifndef H_WUTILS_H
 #define H_WUTILS_H
 
+#include <inttypes.h>
+#include <stdint.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <string.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -60,9 +66,7 @@ enum LOGS_LEVEL { LOGS_DEBUG, LOGS_INFO, LOGS_RUN, LOGS_OFF };
 // sw test assert failure
 void wassert_fn(const char* file, int lnum);
 // logging
-void log_init_console(bool enable);
-void log_init_dbg(uint8_t u);
-void log_config_uart(UART* dev);
+void wlog_init(int uartNb);
 int log_init_uart();
 void log_deinit_uart();
 bool log_check_uart_active();
@@ -109,6 +113,10 @@ uint32_t Util_hashstrn(const char* s, int maxlen);
 */
 bool Util_notAll0(const uint8_t *p, uint8_t sz);
 
+uint8_t Util_hexdigit( char hex );
+uint8_t Util_hexbyte( const char* hex );
+/** convert a hex string to a byte array to avoid sscanf. Ensure 'out' is at least of size 'len'. Returns number of bytes successfully found */
+int Util_scanhex(char* in, int len, uint8_t* out);
 
 #ifdef __cplusplus
 }

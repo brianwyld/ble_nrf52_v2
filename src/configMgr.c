@@ -20,10 +20,10 @@
 
 #include "configmgr.h"
 
-#define MAX_KEYS 200 //MYNEWT_VAL(CFG_MAX_KEYS)
+#define MAX_KEYS 200
 #define INDEX_SIZE  (5)
 #define NVM_HDR_SIZE (0x10)
-#define MAX_CFG_CBS 10
+#define MAX_CFG_CBS 1
 
 struct cfg {
     uint8_t nbKeys;
@@ -44,6 +44,7 @@ static void cfgLockR();
 static void cfgUnlockR();
 static void cfgLockW();
 static void cfgUnlockW();
+static bool isNVMDifferent(uint8_t* newdata, uint16_t nvmoff, uint8_t len);
 
 static int createKey(uint16_t k, uint8_t l, uint8_t* d);
 static int findKeyIdx(uint16_t k);
@@ -363,7 +364,7 @@ void CFMgr_init(void) {
         // oops. can't log yet
         log_noout("PROM cfg store corruption (%d, %d)", nbK_pri, nbK_sec);
         // log our fn address, and continue. Might be ok...
-        log_fn_fn();
+//        log_fn_fn();
     }
     _cfg.nbKeys = nbK_pri;
     _cfg.indexStart = hal_bsp_nvmRead16(2);
@@ -383,7 +384,7 @@ void CFMgr_init(void) {
         hal_bsp_nvmWrite16(4, _cfg.storeStart);
         cfgUnlockW();
         // just log passage : no assert (as this writes to PROM!)
-        log_fn_fn();
+//        log_fn_fn();
     }
 /*
     // Calculate where next free space in store it while reading the key index into ram

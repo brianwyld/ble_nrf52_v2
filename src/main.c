@@ -14,19 +14,19 @@
 #include "main.h"
 #include "nordic_common.h"
 #include "nrf.h"
-#include "ble_conn_params.h"
 #include "app_timer.h"
 #include "app_error.h"
 #include "app_uart.h"
 #include "app_button.h"
-#include "ble_db_discovery.h"
 #include "app_util.h"
 #include "app_util_platform.h"
 #include "bsp.h"
-#include "bsp_btn_ble.h"
 #include "boards.h"
 #include "bsp_config.h"
 #include "ble.h"
+#include "ble_conn_params.h"
+#include "ble_db_discovery.h"
+#include "bsp_btn_ble.h"
 #include "ble_gap.h"
 #include "ble_nus.h"
 #include "ble_hci.h"
@@ -38,9 +38,11 @@
 
 #include "timer_watchdog.h"
 
+#include "wutils.h"
 #include "bsp_minew_nrf51.h"
 #include "configmgr.h"
 #include "comm_uart.h"
+#include "comm_ble.h"
 
 #include "ibs_scan.h"
 
@@ -69,10 +71,7 @@
 #define APP_ADV_INTERVAL_SLOW           64                                          /**< The advertising interval (in units of 0.625 ms. This value corresponds to 40 ms). */
 #define APP_ADV_TIMEOUT_IN_SECONDS       180                                         /**< The advertising timeout (in units of seconds). */
  
-#define APP_TIMER_PRESCALER             0                                           /**< Value of the RTC1 PRESCALER register. */
-#define APP_TIMER_OP_QUEUE_SIZE_UART    4                                           /**< Size of timer operation queues. */
-#define APP_TIMER_OP_QUEUE_SIZE_WB      2                                           /**< Size of timer operation queues. */
- 
+#define APP_TIMER_PRESCALER             0                                           /**< Value of the RTC1 PRESCALER register. */ 
  
 #define MIN_CONN_INTERVAL               MSEC_TO_UNITS(20, UNIT_1_25_MS)             /**< Minimum acceptable connection interval (20 ms), Connection interval uses 1.25 ms units. */
 #define MAX_CONN_INTERVAL               MSEC_TO_UNITS(75, UNIT_1_25_MS)             /**< Maximum acceptable connection interval (75 ms), Connection interval uses 1.25 ms units. */
@@ -93,12 +92,9 @@
 #define MAX_CONNECTION_INTERVAL MSEC_TO_UNITS(75, UNIT_1_25_MS) /**< Determines maximum connection interval in millisecond. */
 #define SLAVE_LATENCY           0                               /**< Determines slave latency in counts of connection events. */
 #define SUPERVISION_TIMEOUT     MSEC_TO_UNITS(4000, UNIT_10_MS) /**< Determines supervision time-out in units of 10 millisecond. */
-
-#define PRINT_DEBUG 0
  
 //WBeacon
 #define APP_BEACON_INFO_LENGTH          0x17                                    /**< Total length of information advertised by the Beacon. */
-#define MAJ_VAL_OFFSET_IN_BEACON_INFO   18                                      /**< Position of the MSB of the Major Value in m_beacon_info array. */
 #define APP_CFG_NON_CONN_ADV_TIMEOUT    0                                   /**< Time for which the device must be advertising in non-connectable mode (in seconds). 0 disables timeout. */
 
 static struct app_context {
@@ -111,16 +107,15 @@ static struct app_context {
     bool isIBeaconning;         // should we be acting as ibeacon just now?
     //iBeacon config
     uint16_t advertisingInterval_ms; // Default advertising interval 100 ms
-    int8_t txPowerLevel; // Default -4dBm
     uint16_t major_value;
     uint16_t minor_value;
     uint8_t beacon_uuid_tab[UUID128_SIZE];
     uint16_t company_id; // apple 0x0059 -> Nordic
-    uint8_t measured_rssi;
+    int8_t txPowerLevel; // Default -4dBm
+    uint8_t extra_value;    // usually related to tx power
     uint8_t device_type;        // for ibeacon?
     // config for connectable adverts
     char nameAdv[DEVICE_NAME_LEN];
-    bool IsNameCustom;
     bool isPasswordOK;              // Indicates if password has been validated or not
     uint8_t passwordTab[PASSWORD_LEN]; // Password
     uint8_t masterPasswordTab[PASSWORD_LEN]; // Password
@@ -143,7 +138,7 @@ static struct app_context {
     .nameAdv = "W_FFFF_FFFF", 
     .adv_data_length = 0x15,
     .company_id = 0x004C, 
-    .measured_rssi = 0xC3,
+    .extra_value = 0xC3,
     .device_type = 0x02,
     .passwordTab = {'0', '0', '0', '0'},
     .masterPasswordTab = {'6', '0', '6', '7'},
@@ -151,8 +146,12 @@ static struct app_context {
 
 static void sys_evt_handler(uint32_t evt);
 static uint32_t advertising_check_start();
+static void configInit();
+static void configUpdateRequest();
+static void configWrite();
+static uint8_t makeAdvPowerLevel( void );
 
-APP_TIMER_DEF(m_deinit_uart_delay); 
+//APP_TIMER_DEF(m_deinit_uart_delay); 
 
 #if 0
 volatile char debug;
@@ -242,7 +241,7 @@ static void on_conn_params_evt(ble_conn_params_evt_t * p_evt)
         err_code = sd_ble_gap_disconnect(_ctx.m_conn_handle, BLE_HCI_CONN_INTERVAL_UNACCEPTABLE);
         APP_ERROR_CHECK(err_code);
         err_code = advertising_check_start();
-        ConfigUpdateRequest();      // As was connected, params may have changed
+        configUpdateRequest();      // As was connected, params may have changed
         APP_ERROR_CHECK(err_code);
     }
 }
@@ -324,18 +323,18 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             APP_ERROR_CHECK(err_code);
             _ctx.m_conn_handle = BLE_CONN_HANDLE_INVALID;
             err_code = advertising_check_start();
-            ConfigUpdateRequest();      // As was connected, params may have changed
+            configUpdateRequest();      // As was connected, params may have changed
             APP_ERROR_CHECK(err_code);
         break; // BLE_GAP_EVT_DISCONNECTED
         
-        case BLE_GAP_EVT_ADV_REPORT:
-            ble_gap_evt_adv_report_t * p_adv_report = &p_gap_evt->params.adv_report;
+        case BLE_GAP_EVT_ADV_REPORT: {
+            ble_gap_evt_adv_report_t *p_adv_report = &p_gap_evt->params.adv_report;
             ibs_handle_advert(p_adv_report);
         break; // BLE_GAP_EVT_ADV_REPORT
-        
+        }
         case BLE_GAP_EVT_TIMEOUT:
             err_code = advertising_check_start();
-            ConfigUpdateRequest();      // As was connected, params may have changed
+            configUpdateRequest();      // As was connected, params may have changed
             APP_ERROR_CHECK(err_code);
             
             if (p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_SCAN)
@@ -343,20 +342,20 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
                 // If scan still active, restart it
                 if (ibs_is_scan_active())
                 {
-                    ibs_do_scan_start();
+                    ibs_scan_restart();
                 }
             }
         break;
             
         case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
             // Pairing not supported
-            err_code = sd_ble_gap_sec_params_reply(m_conn_handle, BLE_GAP_SEC_STATUS_PAIRING_NOT_SUPP, NULL, NULL);
+            err_code = sd_ble_gap_sec_params_reply(_ctx.m_conn_handle, BLE_GAP_SEC_STATUS_PAIRING_NOT_SUPP, NULL, NULL);
             APP_ERROR_CHECK(err_code);
         break; // BLE_GAP_EVT_SEC_PARAMS_REQUEST
  
         case BLE_GATTS_EVT_SYS_ATTR_MISSING:
             // No system attributes have been stored.
-            err_code = sd_ble_gatts_sys_attr_set(m_conn_handle, NULL, 0, 0);
+            err_code = sd_ble_gatts_sys_attr_set(_ctx.m_conn_handle, NULL, 0, 0);
             APP_ERROR_CHECK(err_code);
         break; // BLE_GATTS_EVT_SYS_ATTR_MISSING
  
@@ -366,7 +365,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
             APP_ERROR_CHECK(err_code);
             err_code = advertising_check_start();
-            ConfigUpdateRequest();      // As was connected, params may have changed
+            configUpdateRequest();      // As was connected, params may have changed
             APP_ERROR_CHECK(err_code);
         break; // BLE_GATTC_EVT_TIMEOUT
  
@@ -376,7 +375,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
             APP_ERROR_CHECK(err_code);
             err_code = advertising_check_start();
-            ConfigUpdateRequest();      // As was connected, params may have changed
+            configUpdateRequest();      // As was connected, params may have changed
             APP_ERROR_CHECK(err_code);
         break; // BLE_GATTS_EVT_TIMEOUT
  
@@ -505,13 +504,14 @@ static void ble_stack_init(void)
     APP_ERROR_CHECK(err_code);
 }
 
+
 /**@brief Function for handling events from the BSP module.
  *
  * @param[in] event  Event generated by bsp
  */
-void bsp_event_handler(bsp_event_t event)
+/*
+static void bsp_event_handler(bsp_event_t event)
 {
-    uint32_t err_code;
     switch (event)
     {
         case BSP_EVENT_SLEEP:
@@ -521,7 +521,7 @@ void bsp_event_handler(bsp_event_t event)
         case BSP_EVENT_DISCONNECT:
             comm_ble_disconnect();
             advertising_check_start();
-            ConfigUpdateRequest();
+            configUpdateRequest();
         break;
         case BSP_EVENT_WHITELIST_OFF:
             advertising_check_start();
@@ -531,7 +531,7 @@ void bsp_event_handler(bsp_event_t event)
         break;
     }
 }
-
+*/
 /** @brief Function for initializing the Database Discovery Module.
  */
 static void db_discovery_init(void)
@@ -548,31 +548,34 @@ static void power_manage(void)
     APP_ERROR_CHECK(err_code);
 }
 
+
 /** Config handling
  */
 // Get config from NVM into _ctx
-void ConfigInit() {
+static void configInit() {
     CFMgr_getOrAddElement(CFG_UTIL_KEY_BLE_IBEACON_MAJOR, &_ctx.major_value, sizeof(uint16_t));
     CFMgr_getOrAddElement(CFG_UTIL_KEY_BLE_IBEACON_MINOR, &_ctx.minor_value, sizeof(uint16_t));
     CFMgr_getOrAddElement(CFG_UTIL_KEY_BLE_IBEACON_PERIOD_MS, &_ctx.advertisingInterval_ms, sizeof(uint16_t));
     CFMgr_getOrAddElement(CFG_UTIL_KEY_BLE_IBEACON_TXPOWER, &_ctx.txPowerLevel, sizeof(int8_t));
+    CFMgr_getOrAddElement(CFG_UTIL_KEY_BLE_IBEACON_EXTRA, &_ctx.extra_value, sizeof(uint8_t));
     CFMgr_getOrAddElement(CFG_UTIL_KEY_BLE_IBEACON_COMPANYID, &_ctx.company_id, sizeof(uint16_t));
     CFMgr_getOrAddElement(CFG_UTIL_KEY_BLE_IBEACON_NAME, &_ctx.nameAdv, DEVICE_NAME_LEN);
     CFMgr_getOrAddElement(CFG_UTIL_KEY_BLE_IBEACON_UUID, &_ctx.beacon_uuid_tab, UUID128_SIZE);
     CFMgr_getOrAddElement(CFG_UTIL_KEY_BLE_IBEACON_PASS, &_ctx.passwordTab, PASSWORD_LEN);
 }
 // Request update of NVM with new config
-void ConfigUpdateRequest() {
+static void configUpdateRequest() {
     // Set flag to do it in main loop (for ble timing reasons)
     _ctx.flashWriteReq = true;
 }
-void ConfigWrite() {
+static void configWrite() {
     _ctx.flashBusy=true;
     // Wrtie each value using configmgr (who checks if it has changed)
     CFMgr_setElement(CFG_UTIL_KEY_BLE_IBEACON_MAJOR, &_ctx.major_value, sizeof(uint16_t));
     CFMgr_setElement(CFG_UTIL_KEY_BLE_IBEACON_MINOR, &_ctx.minor_value, sizeof(uint16_t));
     CFMgr_setElement(CFG_UTIL_KEY_BLE_IBEACON_PERIOD_MS, &_ctx.advertisingInterval_ms, sizeof(uint16_t));
     CFMgr_setElement(CFG_UTIL_KEY_BLE_IBEACON_TXPOWER, &_ctx.txPowerLevel, sizeof(int8_t));
+    CFMgr_setElement(CFG_UTIL_KEY_BLE_IBEACON_EXTRA, &_ctx.extra_value, sizeof(uint8_t));
     CFMgr_setElement(CFG_UTIL_KEY_BLE_IBEACON_COMPANYID, &_ctx.company_id, sizeof(uint16_t));
     CFMgr_setElement(CFG_UTIL_KEY_BLE_IBEACON_NAME, &_ctx.nameAdv, DEVICE_NAME_LEN);
     CFMgr_setElement(CFG_UTIL_KEY_BLE_IBEACON_UUID, &_ctx.beacon_uuid_tab, UUID128_SIZE);
@@ -592,6 +595,7 @@ int cfg_getFWMinor() {
 void cfg_setUUID(uint8_t* value)
 {
     memcpy(_ctx.beacon_uuid_tab, value, UUID128_SIZE);
+    configUpdateRequest();
 }
  
 uint8_t* cfg_getUUID( void )
@@ -601,6 +605,7 @@ uint8_t* cfg_getUUID( void )
 void cfg_setADV_IND(uint32_t value)
 {
     _ctx.advertisingInterval_ms = value;
+    configUpdateRequest();
 }
  
 uint16_t cfg_getADV_IND( void )
@@ -611,6 +616,7 @@ uint16_t cfg_getADV_IND( void )
 void cfg_setTXPOWER_Level(int8_t level)
 {
     _ctx.txPowerLevel = level;
+    configUpdateRequest();
 }
  
 int8_t cfg_getTXPOWER_Level( void )
@@ -621,6 +627,7 @@ int8_t cfg_getTXPOWER_Level( void )
 void cfg_setMinor_Value(uint16_t value)
 {
     _ctx.minor_value = value;
+    configUpdateRequest();
 }
  
 uint16_t cfg_getMinor_Value( void )
@@ -631,6 +638,7 @@ uint16_t cfg_getMinor_Value( void )
 void cfg_setMajor_Value(uint16_t value)
 {
     _ctx.major_value = value;
+    configUpdateRequest();
 }
  
 uint16_t cfg_getMajor_Value( void )
@@ -656,10 +664,11 @@ bool cfg_checkPassword( char* given )
 }
 bool cfg_setPassword(char* oldp, char* newp) 
 {
-    if (checkPassword(oldp)) {
+    if (cfg_checkPassword(oldp)) {
         for(int i=0;i<PASSWORD_LEN;i++) {
             _ctx.passwordTab[i]=newp[i];
         }
+        configUpdateRequest();
         return true;
     }
     return false;
@@ -667,6 +676,7 @@ bool cfg_setPassword(char* oldp, char* newp)
 void cfg_setCompanyID(uint16_t value)
 {
     _ctx.company_id = value;
+    configUpdateRequest();
 }
  
 uint16_t cfg_getCompanyID( void )
@@ -674,9 +684,22 @@ uint16_t cfg_getCompanyID( void )
     return _ctx.company_id;
 }
  
- 
+void cfg_setExtra_Value(uint8_t extra) {
+    _ctx.extra_value = extra;
+    configUpdateRequest();
+}
+uint8_t cfg_getExtra_Value() {
+    return makeAdvPowerLevel();
+}
+
+// Return the 'measured power @ 1m' field value for the ibeacon
 static uint8_t makeAdvPowerLevel( void )
 {
+    // If explciitly set (eg via AT cmd) use value 
+    if (_ctx.extra_value!=0) {
+        return _ctx.extra_value;
+    }
+    // Otherwise we use value based on tx power and battery
     uint8_t result_adv = 0;
     float battery = 0.0;
     
@@ -753,13 +776,19 @@ static uint8_t makeAdvPowerLevel( void )
 bool ibb_isBeaconning() {
     return _ctx.isIBeaconning;
 }
+
 void ibb_start() {
     _ctx.isIBeaconning=true;
     advertising_check_start();
 }
 void ibb_stop() {
-    _çtx.isIBeaconning=false;
+    _ctx.isIBeaconning=false;
     advertising_check_start();
+}
+
+/** request a reset asap */
+void app_reset_request() {
+    _ctx.resetRequested = true;    
 }
 
 /**@brief Function for initializing the Advertising functionality.
@@ -770,7 +799,6 @@ static void advertising_init(void)
     ble_advdata_t          advdata;
     ble_advdata_t          scanrsp;
     ble_adv_modes_config_t options;
-    int8_t txpowerlevel = makeAdvPowerLevel();
     ble_advdata_manuf_data_t manuf_specific_data; 
     uint8_t flags = (BLE_GAP_ADV_FLAG_LE_GENERAL_DISC_MODE |
                                         BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED);
@@ -778,18 +806,18 @@ static void advertising_init(void)
     memset(&scanrsp, 0, sizeof(scanrsp));
     memset(&options, 0, sizeof(options));
 
-    manuf_specific_data.company_identifier = GetCompanyID();
+    manuf_specific_data.company_identifier = cfg_getCompanyID();
 
     _ctx.m_beacon_info[0] = _ctx.device_type;
     _ctx.m_beacon_info[1] = _ctx.adv_data_length;
     memcpy(&_ctx.m_beacon_info[2], &_ctx.beacon_uuid_tab[0], UUID128_SIZE);
 
-    _ctx.m_beacon_info[18] = MSB_16(GetMajor_Value());
-    _ctx.m_beacon_info[19] = LSB_16(GetMajor_Value());
-    _ctx.m_beacon_info[20] = MSB_16(GetMinor_Value());
-    _ctx.m_beacon_info[21] = LSB_16(GetMinor_Value());
+    _ctx.m_beacon_info[18] = MSB_16(cfg_getMajor_Value());
+    _ctx.m_beacon_info[19] = LSB_16(cfg_getMajor_Value());
+    _ctx.m_beacon_info[20] = MSB_16(cfg_getMinor_Value());
+    _ctx.m_beacon_info[21] = LSB_16(cfg_getMinor_Value());
     
-    _ctx.m_beacon_info[22] = _ctx.measured_rssi;
+    _ctx.m_beacon_info[22] = makeAdvPowerLevel();
 
     manuf_specific_data.data.p_data = (uint8_t *) (&_ctx.m_beacon_info[0]);
     manuf_specific_data.data.size   = APP_BEACON_INFO_LENGTH;
@@ -821,7 +849,7 @@ static void advertising_init(void)
     scanrsp.uuids_complete.uuid_cnt = sizeof(_ctx.m_adv_uuids) / sizeof(_ctx.m_adv_uuids[0]);
     scanrsp.uuids_complete.p_uuids  = _ctx.m_adv_uuids;
     scanrsp.name_type = BLE_ADVDATA_FULL_NAME;
-    scanrsp.p_tx_power_level = &txpowerlevel;
+    scanrsp.p_tx_power_level = &_ctx.txPowerLevel;
 
     options.ble_adv_fast_enabled  = true;
     options.ble_adv_fast_interval = MSEC_TO_UNITS(cfg_getADV_IND(), UNIT_0_625_MS);
@@ -863,16 +891,16 @@ static uint32_t advertising_check_start()
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&sec_mode);
 
     // password check has not been validated
-    SetActivePassword(false);
+    cfg_resetPasswordOk();
     // Update name in case major/minor changed 
-    sprintf(_ctx.nameAdv, "%s_%04x_%04x", DEVICE_NAME_BASE, _ctx.major_value, _ctx.minor_value);
+    sprintf(_ctx.nameAdv, "%s_%04x_%04x", DEVICE_NAME_BASE, cfg_getMajor_Value(), cfg_getMinor_Value());
     // Change name
     sd_ble_gap_device_name_set(&sec_mode,
                                (const uint8_t *)(&_ctx.nameAdv[0]),
                                 strlen(_ctx.nameAdv));
  
     // Change tx power level
-    sd_ble_gap_tx_power_set(GetTXPOWER_Level());
+    sd_ble_gap_tx_power_set(cfg_getTXPOWER_Level());
  
     advertising_init();
     conn_params_init();
@@ -886,7 +914,15 @@ static uint32_t advertising_check_start()
     return 0;       // setup ok
 }
  
-void sys_evt_handler(uint32_t evt)
+void app_setFlashBusy() {
+    _ctx.flashBusy = true;      // someone somewhere is writing to the flash
+}
+bool app_isFlashBusy() {
+    return _ctx.flashBusy;      // they would like to know if its busy right now
+}
+
+// Callback when system events happen
+static void sys_evt_handler(uint32_t evt)
 {
     switch(evt)
     {
@@ -907,7 +943,7 @@ void sys_evt_handler(uint32_t evt)
 
 
  
-
+/*
 static void deinit_uart_timeout_handler(void * p_context)
 {
     comm_uart_deinit();
@@ -926,6 +962,7 @@ static void deinit_uart_timeout_handler(void * p_context)
     //nrf_gpio_cfg_input(RX_PIN_NUMBER, GPIO_PIN_CNF_PULL_Pulldown);
     //nrf_gpio_cfg_input(TX_PIN_NUMBER, GPIO_PIN_CNF_PULL_Pulldown);
 }
+*/
 
 void system_init(void)
 {
@@ -937,11 +974,11 @@ void system_init(void)
     
     db_discovery_init();
 
-    log_uart_init();
+    wlog_init(-1);      // replace by 0 to get logs on uart
     ble_stack_init();
 
     comm_uart_init(); // REV B invert TX RX for board//
-    comm_uart_tx("READY\r\n",7, NULL);
+    comm_uart_tx((uint8_t *)"READY\r\n",7, NULL);
     
     gap_params_init();
     services_init();
@@ -960,7 +997,7 @@ void system_init(void)
 }
 int main(void)
 {
-    ConfigInit();              
+    configInit();              
     
     system_init();
     for (;;)
@@ -971,12 +1008,12 @@ int main(void)
         }
         if(_ctx.flashWriteReq)
         {
-            ConfigWrite();
+            configWrite();
             _ctx.flashWriteReq = false;
         }
         
         // Go in lowpower only if flash isn't busy
-        if(!_ctx.flashBusy)
+        if(!app_isFlashBusy())
         {
             power_manage();
         }

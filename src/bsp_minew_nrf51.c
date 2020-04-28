@@ -2,7 +2,17 @@
  * BSP functions for the Minex nRF51xxx module mounted on the Wyres dcard
  * Some of these are specific to the board, others for the nrf51 SOC
  */
+
+#include <inttypes.h>
+#include <stdint.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <string.h>
+
 #include "app_uart.h"
+
+#include "main.h"
+
 #include "bsp_minew_nrf51.h"
 
 // UARTs config
@@ -22,20 +32,19 @@ static app_uart_comm_params_t _uart_comm_params[UART_CNT] =
 // - communication with external cards (AT command set processing) 
 // - debug logging
 bool hal_bsp_uart_init(int uartNb, int baudrate, app_uart_event_handler_t uart_event_handler) {
-{
-    uint32_t                     err_code;
+    uint32_t  err_code=0;
     if (uartNb<0 || uartNb>=UART_CNT) {
         return NULL;
     }
     _uart_comm_params[uartNb].baud_rate = baudrate;
-    APP_UART_FIFO_INIT( &comm_params,
+    APP_UART_FIFO_INIT( (&_uart_comm_params[uartNb]),
                        UART_RX_BUF_SIZE,
                        UART_TX_BUF_SIZE,
                        uart_event_handler,
                        APP_IRQ_PRIORITY_LOW,
                        err_code);
     APP_ERROR_CHECK(err_code);
-    return &_uart_comm_params[uartNb];
+    return true;
 }
 
 void hal_bsp_uart_deinit(int uartNb) {
@@ -46,8 +55,8 @@ void hal_bsp_uart_deinit(int uartNb) {
     app_uart_close();
 }
 
-// Tx line to uart. returns number of bytes not sent due to flow control
-int hal_bsp_uart_tx(int uartNb, uint8_t d, int len) {
+// Tx line. returns number of bytes not sent due to flow control or -1 for error
+int hal_bsp_uart_tx(int uartNb, uint8_t* d, int len) {
     if (uartNb<0 || uartNb >= UART_CNT) {
         return -1;      // fatal error
     }
@@ -84,37 +93,22 @@ void hal_bsp_buttons_deinit(void) {
 
 // NVM for config management
 // The NVM used for config on the nrf51 is pages of flash
-// The NVM access functions are per byte or word, and the flash can only erase per 256 byte page... 
-// This is mapped transparently for the caller by using a 'scratch flash' page during writing (to avoid using RAM)
-static uint8_t _dirty[FLASH_PAGE_SZ];
-static uint8_t* _dirtyAddr=NULL;
-static bool writeFlashPage() {
-    // Check if we have dirty scratch
-    if (_dirtyAddr!=NULL) {
-        // Which page is it?
-        int page = (_dirtyAddr - FLASH_START) / FLASH_PAGE_SZ;
-        // Start by erasing the page
-        // TODO
+// Flash related constants for nRF51 with softdevice and app
+// See nrf51_xxac.ld for where these come from...
+extern volatile uint32_t __FLASH_CONFIG_BASE_ADDR[];
+extern volatile uint32_t __FLASH_CONFIG_SZ[];
+static uint32_t FLASH_CONFIG_SZ = ((uint32_t)__FLASH_CONFIG_SZ);      //(0x1000)                    // 4K
+static uint32_t FLASH_CONFIG_BASE_ADDR = (((uint32_t)__FLASH_CONFIG_BASE_ADDR));   //0x338A0)        // FLASH_CFG in .ld file
 
-        // And then allwoed to write to it
-        for(int i=0; i<FLASH_PAGE_SZ;i++) {
-            *(page*FLASH_PAGE_SZ + i) = _dirty[i];
-        }
-        _dirtyAddr = NULL;       // for next time
-    }
-}
 uint16_t hal_bsp_nvmSize() {
-    return FLASH_CONFIG_SZ;
+    return (uint16_t)FLASH_CONFIG_SZ;
 }
 // Lock flash, we're done writing
 bool hal_bsp_nvmLock() {
-        // write dirty scratch to it
-        writeDirtyPage();
     return true;
 }
 // Unlock flash, we're going to be writing stuff
 bool hal_bsp_nvmUnlock() {
-    _dirtyAddr = NULL;       // nothing is dirty yet
     return true;
 }
 
@@ -131,44 +125,55 @@ bool hal_bsp_nvmRead(uint16_t off, uint8_t len, uint8_t* buf) {
     return true;
 }
 bool hal_bsp_nvmWrite8(uint16_t off, uint8_t v) {
-//    HAL_FLASHEx_DATAEEPROM_Erase(FLASH_TYPEERASEDATA_BYTE, ((uint32_t)PROM_BASE)+off);
-//    return (HAL_FLASHEx_DATAEEPROM_Program(FLASH_TYPEPROGRAMDATA_FASTBYTE, ((uint32_t)PROM_BASE)+off, v)==HAL_OK);
+    uint32_t status=NRF_SUCCESS;
     // Sanity check
     if (off > hal_bsp_nvmSize()) {
         return false;       // no writing on the code
     }
-    uint8_t *pageAddr = FLASH_CONFIG_BASE_ADDR+(off/FLASH_PAGE_SZ);
-    // write to scratch page iff (!dirty || (dirty && off is in the-dirty-page)), set bit saying this byte is dirty
-    if (_dirtyAddr==NULL) {
-        _dirtyAddr = pageAddr;
-        // initialise dirty page with current flash contents
-        memcpy(_dirty, _dirtyAddr, FLASH_PAGE_SZ);
-        // write the value to dirty scratch
-        _dirty[off%FLASH_PAGE_SZ] = v;
-    } else if (_dirtyAddr == pageAddr) {
-        // same page as dirty one already, just write the byte
-        _dirty[off%FLASH_PAGE_SZ] = v;
-    } else {
-        // Poo, its a different page
-        // write dirty scratch to previous page
-        writeDirtyPage();
-        // reinit dirty with new page
-        _dirtyAddr = pageAddr;
-        // initialise dirty page with current flash contents
-        memcpy(_dirty, _dirtyAddr, FLASH_PAGE_SZ);
-        // write the value to dirty scratch
-        _dirty[off%FLASH_PAGE_SZ] = v;
+    // softdevice access function can onyl access in 32 bit chunks. Need to map and merge...
+    uint16_t off_u32aligned = (off/4)*4;
+    uint32_t* addr_u32aligned = (uint32_t*)(FLASH_CONFIG_BASE_ADDR+off_u32aligned);
+    // Get current value
+    uint32_t currentU32Val = *addr_u32aligned;
+    // Overwrite the correct byte
+    switch (off % 4) {
+        case 0:
+            currentU32Val = ((currentU32Val & 0xFFFFFF00) | v);
+            break;
+        case 1:
+            currentU32Val = ((currentU32Val & 0xFFFF00FF) | (v<<8));
+            break;
+        case 2:
+            currentU32Val = ((currentU32Val & 0xFF00FFFF) | (v<<16));
+            break;
+        case 3:
+            currentU32Val = ((currentU32Val & 0x00FFFFFF) | (v<<24));
+            break;
     }
-    return true;
+    app_setFlashBusy();    
+    do
+    {
+        status = sd_flash_write(addr_u32aligned, &currentU32Val, 1);        // Write 1 32 bit value
+    } while (status == NRF_ERROR_BUSY);     // In case its still processing the previous write
+    /* not required to wait
+        while(app_isFlashBusy())
+        {
+            sd_app_evt_wait();
+        }
+    */
+    return (status==NRF_SUCCESS);
 }
+
 bool hal_bsp_nvmWrite16(uint16_t off, uint16_t v) {
     bool ret = true;
-    // Just write as 2 bytes, no perf loss
+    // Just write as 2 bytes, too hard to think about optimisation (may be within 1 32 bit word, or split...)
     ret &= hal_bsp_nvmWrite8(off, v & 0xff);
     ret &= hal_bsp_nvmWrite8(off+1, (v>>8) & 0xff);
     return ret;
 }
+
 bool hal_bsp_nvmWrite(uint16_t off, uint8_t len, uint8_t* buf) {
+    // Writing N bytes, worth the optimisation? TODO later
     bool ret = true;
     for(int i=0;i<len;i++) {
         ret &= hal_bsp_nvmWrite8(off+i, *(buf+i));

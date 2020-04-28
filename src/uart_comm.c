@@ -6,8 +6,11 @@
 
 #include "app_uart.h"
 
+#include "wutils.h"
+
 #include "main.h"
 #include "bsp_minew_nrf51.h"
+#include "at_process.h"
 
 #define COMM_UART_NB    (0)
 #define COMM_UART_BAUDRATE  (115200)
@@ -39,6 +42,7 @@ int comm_uart_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
     if (data!=NULL)  {
         return (hal_bsp_uart_tx(_ctx.uartNb, data, len));
     }
+    return 0;       // ok mate
 }
 
 /**@brief   Function for handling app_uart events.
@@ -49,9 +53,7 @@ int comm_uart_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
  *          @ref NUS_MAX_DATA_LENGTH.
  */
 static void uart_event_handler(app_uart_evt_t * p_event)
-{
-    uint32_t err_code;
-    
+{    
     switch (p_event->evt_type)
     {
         case APP_UART_DATA_READY:
@@ -64,7 +66,7 @@ static void uart_event_handler(app_uart_evt_t * p_event)
                 {
                     _ctx.rx_buf[_ctx.rx_index+1] = 0; // null terminate the data in buffer (not overwriting the \r or \n though)
                     // And process
-                    at_process_input(_ctx.rx_buf, &comm_uart_tx);
+                    at_process_input((char*)(&_ctx.rx_buf[0]), &comm_uart_tx);
                     // reset our line buffer to start
                     _ctx.rx_index = 0;
                     // Continue for rest of data in input

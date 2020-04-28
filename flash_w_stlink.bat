@@ -3,7 +3,7 @@
 set arg2=%2
 set major_minor=%arg2:~6,2%%arg2:~4,2%%arg2:~2,2%%arg2:~0,2%
 set OPENOCD=c:/Program Files (x86)/OpenOCD
-openocd -f "./scripts/interface/stlink.cfg" -f "./scripts/target/nrf51.cfg" -c "init; halt; nrf51 mass_erase; program ./hexs/softdevice.hex verify; program ./hexs/%1 verify; flash fillw 0x000338A0 0x30303030 1; flash fillw 0x000338A4 0x%major_minor% 1; flash fillw 0x000338A8 0xFF0064EC 1; flash fillw 0x00033CA0 0x00000002 1; reset;shutdown"
+openocd -f "./scripts/interface/stlink.cfg" -f "./scripts/target/nrf51.cfg" -c "init; halt; nrf51 mass_erase; program ./hexs/softdevice.hex verify; program ./outputs/%1 verify; flash fillw 0x000338A0 0x30303030 1; flash fillw 0x000338A4 0x%major_minor% 1; flash fillw 0x000338A8 0xFF0064EC 1; flash fillw 0x00033CA0 0x00000002 1; reset;shutdown"
 
 ::
 ::Command: flash erase_address [pad] [unlock] address length

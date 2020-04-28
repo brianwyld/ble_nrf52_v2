@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdarg.h>
 #include "ble_nus.h"
 #include "app_util_platform.h"
 #include "ble_hci.h"
@@ -15,8 +16,9 @@
 #include "nrf_delay.h"
 #include "softdevice_handler.h"
 
-#include "main.h"
 #include "wutils.h"
+
+#include "main.h"
 #include "configMgr.h"
 #include "at_process.h"
 #include "comm_uart.h"
@@ -33,10 +35,14 @@ typedef struct {
     ATCMD_CBFN_t fn;
 } ATCMD_DEF_t;
 
+static const char* TYPE_SCANNER="1";
+//static const char* TYPE_UART="2";     // Not required
+static const char* TYPE_IBEACON="3";
+
 // Write output to console on given device
 static bool wconsole_println(void* udev, const char* l, ...);
 static void at_process_line(char* line, UART_TX_FN_T utx_fn);
-static int findATDISC(uint8_t* data, int len);
+
 // predec at command handlers
 static ATRESULT atcmd_hello(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_who(uint8_t nargs, char* argv[], void* odev);
@@ -78,8 +84,6 @@ static ATCMD_DEF_t ATCMDS[] = {
 // Our local data context
 static struct {
     uint8_t txbuf[MAX_TXSZ+1];
-    uint8_t rx_buf[MAX_RXSZ+1];
-    uint8_t rx_index;
     UART_TX_FN_T passThru_txfn1;        // If in passthru, this is output to one side
     UART_TX_FN_T passThru_txfn2;        // and this the other
     uint8_t ncmds;
@@ -102,16 +106,16 @@ void at_process_input(char* data, UART_TX_FN_T source_txfn) {
             dest_txfn = _ctx.passThru_txfn2;
         }
         // check for disconnect, else pass the data on
-        if (strcasecmp("AT+DISC", data)==0) {
-            (*dest_txfn)(NULL, -1);        // Tell remote dest we're done
-            (*source_txfn)(NULL, -1);       // and confirm to source
+        if (strcmp("AT+DISC", data)==0) {
+            (*dest_txfn)(NULL, -1, NULL);        // Tell remote dest we're done
+            (*source_txfn)(NULL, -1, NULL);       // and confirm to source
             _ctx.passThru_txfn1 = NULL;      // ie disconnect
             _ctx.passThru_txfn2 = NULL;      // ie disconnect
         } else {
             // Give it all to dest
-            if ((*dest_txfn)(data, strlen(data))<0) {
+            if ((*dest_txfn)((uint8_t*)data, strlen(data), NULL)<0) {
                 // broken
-                (*source_txfn)(NULL, -1);        // tell guy who sent me data
+                (*source_txfn)(NULL, -1, NULL);        // tell guy who sent me data
                 _ctx.passThru_txfn1 = NULL;      // ie disconnect
                 _ctx.passThru_txfn2 = NULL;      // ie disconnect
             }
@@ -132,12 +136,12 @@ static void at_process_line(char* line, UART_TX_FN_T utx_fn) {
     els[elsi++] = s;
     while (*s!=0 && elsi<5) {
         // Separators on line are space, = and , (so can accept "AT+X P1 P1", "AT+X=P1 P2" and "AT+X=P1,P2, P3" etc )
-        if (*s==' ' || *s=='=' || *s=',') {
+        if (*s==' ' || *s=='=' || *s==',') {
             // make end of string at white space
             *s='\0';
             s++;
             // consume blank space or seperators
-            while(*s==' ' || *s=='=' || *s=',') {
+            while(*s==' ' || *s=='=' || *s==',') {
                 s++;
             }
             // If more string, then its the next element..
@@ -193,7 +197,7 @@ static ATRESULT atcmd_who(uint8_t nargs, char* argv[], void* odev) {
 }
 
 static ATRESULT atcmd_reset(uint8_t nargs, char* argv[], void* odev) {
-    app_reset();
+    app_reset_request();
     return ATCMD_OK;
 }
 
@@ -437,57 +441,29 @@ static ATRESULT atcmd_password(uint8_t nargs, char* argv[], void* odev) {
 static ATRESULT atcmd_start_scan(uint8_t nargs, char* argv[], void* odev) {
     // check if a UUID is provided
     // expected pattern is AT+START,<UUID> UUID is 32 hex digits long
-
+    // parser cuts into argv[0]=AT+START, argv[1]=<UUID>
     if (nargs>1) 
     {
         // Parse hex string to build bytes
         uint8_t uuid[16];
-        // TODO
-                uint8_t digit;
-        uint8_t byte = 0;
-        int idx_src = 0;
-        int idx_dst = 0;
-
-        while (idx_dst < sizeof(uuid))
+        if (Util_scanhex(argv[1], 16, uuid)!=16) 
+//        if (sscanf(argv[1], "%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
+//                    &uuid[0],&uuid[1],&uuid[2],&uuid[3],&uuid[4],&uuid[5],&uuid[6],&uuid[7],
+//                    &uuid[8],&uuid[9],&uuid[10],&uuid[11],&uuid[12],&uuid[13],&uuid[14],&uuid[15])!=16) 
         {
-            digit = *(uuid + idx_src);
-            
-            if (digit >= 'a')
-            {
-                digit -= 'a';
-                digit += 10;
-            }
-            else if (digit >= 'A')
-            {
-                digit -= 'A';
-                digit += 10;
-            }
-            else
-            {
-                digit -= '0';
-            }
-
-            if (idx_src % 2 == 0)
-            {
-                byte = (digit * 16);
-            }
-            else
-            {
-                byte += digit;
-                uuid[idx_dst++] = byte;
-            }
-            
-            idx_src++;
+            // oops
+            wconsole_println(odev, "ERROR : failed to parse UUID [%s]", argv[1]);
+            return ATCMD_BADARG;
         }
         
-        ibs_scan_set_uuid_filter(uuid);
+        ibs_scan_set_uuid_filter(&uuid[0]);
     }
     else
     {
         ibs_scan_set_uuid_filter(NULL);
     }
     
-    if (!ibs_scan_start()) 
+    if (!ibs_scan_start((UART_TX_FN_T)odev)) 
     {
         return ATCMD_GENERR;
     }
@@ -505,7 +481,54 @@ static ATRESULT atcmd_stop_scan(uint8_t nargs, char* argv[], void* odev) {
 static ATRESULT atcmd_start_ib(uint8_t nargs, char* argv[], void* odev) {
     // set all the params from the args optionally
     if (nargs==7) {
-        // TODO
+        // AT_IB_START <uuid>,<major>,<minor>,<extrabyte>,<interval in ms>,<txpower>
+        // All values in hex
+        uint8_t uuid[16];
+        unsigned int major;
+        unsigned int minor;
+        unsigned int extra;
+        unsigned int interMS;
+        int txpower;
+        if (Util_scanhex(argv[1], 16, uuid)!=16) 
+//        if (sscanf(argv[1], "%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
+//                    &uuid[0],&uuid[1],&uuid[2],&uuid[3],&uuid[4],&uuid[5],&uuid[6],&uuid[7],
+//                    &uuid[8],&uuid[9],&uuid[10],&uuid[11],&uuid[12],&uuid[13],&uuid[14],&uuid[15])!=16) 
+        {
+            // oops
+            wconsole_println(odev, "ERROR : failed to parse UUID [%s]", argv[1]);
+            return ATCMD_BADARG;
+        }
+        if (sscanf(argv[2], "%04x", &major)!=1) 
+        {
+            wconsole_println(odev, "ERROR : failed to parse major[%s]", argv[2]);
+            return ATCMD_BADARG;
+        }
+        if (sscanf(argv[3], "%04x", &minor)!=1) 
+        {
+            wconsole_println(odev, "ERROR : failed to parse minor[%s]", argv[3]);
+            return ATCMD_BADARG;
+        }
+        if (sscanf(argv[4], "%02x", &extra)!=1) 
+        {
+            wconsole_println(odev, "ERROR : failed to parse extra[%s]", argv[4]);
+            return ATCMD_BADARG;
+        }
+        if (sscanf(argv[5], "%04x", &interMS)!=1) 
+        {
+            wconsole_println(odev, "ERROR : failed to parse interval[%s]", argv[5]);
+            return ATCMD_BADARG;
+        }
+        if (sscanf(argv[6], "%d", &txpower)!=1) 
+        {
+            wconsole_println(odev, "ERROR : failed to parse tx power[%s]", argv[6]);
+            return ATCMD_BADARG;
+        }
+        cfg_setUUID(uuid);
+        cfg_setMajor_Value(major);
+        cfg_setMinor_Value(minor);
+        cfg_setExtra_Value(extra);
+        cfg_setADV_IND(interMS);
+        cfg_setTXPOWER_Level(txpower);
     }
     ibb_start();
     return ATCMD_OK;
@@ -520,9 +543,6 @@ static ATRESULT atcmd_push(uint8_t nargs, char* argv[], void* odev) {
     // always in push mode anyway
     return ATCMD_OK;
 }
-static const char* TYPE_SCANNER="1";
-static const char* TYPE_UART="2";
-static const char* TYPE_IBEACON="3";
 static ATRESULT atcmd_type(uint8_t nargs, char* argv[], void* odev) {
     // If type set to scanner, then stop ibeaconning and vice-versa
     if (nargs==2) {
@@ -543,7 +563,7 @@ static bool wconsole_println(void* dev, const char* l, ...) {
     va_list vl;
     va_start(vl, l);
     vsprintf((char*)&_ctx.txbuf[0], l, vl);
-    int len = strnlen((const char*)&_ctx.txbuf[0], MAX_TXSZ);
+    int len = strlen((const char*)&_ctx.txbuf[0]);  //, MAX_TXSZ);        why no strnlen in gcc libc??
     if ((len)>=MAX_TXSZ) {
         // oops might just have broken stuff...
         _ctx.txbuf[MAX_TXSZ-1] = '\0';
