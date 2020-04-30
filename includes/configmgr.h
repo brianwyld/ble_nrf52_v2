@@ -23,6 +23,7 @@ extern "C" {
 #define CFGKEY(__m, __k) (((__m & 0xff) << 8) | (__k & 0xff))
 typedef void (*CFG_CBFN_t)(uint16_t key);
 
+void CFMgr_init(void);
 bool CFMgr_registerCB(CFG_CBFN_t cb);
 bool CFMgr_addElementDef(uint16_t key, uint8_t len, void* initdata);
 /*

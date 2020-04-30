@@ -1,10 +1,11 @@
 @echo on
-
-set arg2=%2
-set major_minor=%arg2:~6,2%%arg2:~4,2%%arg2:~2,2%%arg2:~0,2%
-set OPENOCD=c:/Program Files (x86)/OpenOCD
+:: app file name in %1, major %2, minor %3
+::set arg2=%2
+::set major_minor=%arg2:~6,2%%arg2:~4,2%%arg2:~2,2%%arg2:~0,2%
+set OPENOCD=c:/soft/openocd-0.10.0
 ::openocd -f "./scripts/interface/stlink.cfg" -f "./scripts/target/nrf51.cfg" -c "init; halt; nrf51 mass_erase; program ./hexs/softdevice.hex verify; program ./outputs/%1 verify; flash fillw 0x000338A0 0x30303030 1; flash fillw 0x000338A4 0x%major_minor% 1; flash fillw 0x000338A8 0xFF0064EC 1; flash fillw 0x00033CA0 0x00000002 1; reset;shutdown"
-openocd -f "./scripts/interface/stlink.cfg" -f "./scripts/target/nrf51.cfg" -c "init; halt; nrf51 mass_erase; program ./hexs/softdevice.hex verify; program ./outputs/%1 verify; reset;shutdown"
+:: openocd limitation : scripts MUST use a full path not relative one?
+openocd -f %OPENOCD%/scripts/interface/stlink-v2.cfg -f %OPENOCD%/scripts/target/nrf51.cfg -c "init; halt; nrf51 mass_erase; program ../hexs/softdevice.hex verify; program ../outputs/%1.hex verify; flash fillw 0x0003F000 0x60671519 1; flash fillh 0x0003F004 0x%2 1;flash fillh 0x0003F006 0x%3 1; reset;shutdown"
 
 ::
 ::Command: flash erase_address [pad] [unlock] address length

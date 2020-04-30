@@ -100,7 +100,6 @@
 static struct app_context {
     //UART Variables
     uint16_t                m_conn_handle;    /**< Handle of the current GAP connection. */
-    ble_uuid_t              m_adv_uuids[2];  /**< Universally unique service identifier. */
     ble_db_discovery_t      m_ble_db_discovery;             /**< Instance of database discovery module. Must be passed to all db_discovert API calls */
     // config
     bool bleConnectable;        // is it allowed to connect via GAP for config or uart pass-thru?
@@ -127,8 +126,7 @@ static struct app_context {
     bool resetRequested;
 } _ctx = {
     .m_conn_handle = BLE_CONN_HANDLE_INVALID, 
-    .m_adv_uuids = {{BLE_UUID_NUS_SERVICE, NUS_SERVICE_UUID_TYPE}},
-    .bleConnectable=true,
+    .bleConnectable=false,
     .isIBeaconning=false,
     .advertisingInterval_ms = 300, 
     .txPowerLevel = RADIO_TXPOWER_TXPOWER_Neg20dBm,  
@@ -294,7 +292,8 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
             APP_ERROR_CHECK(err_code);
         break;
         case BLE_ADV_EVT_IDLE:
-            sleep_mode_enter();
+        // BW : no sleeping on this job TODO check
+//            sleep_mode_enter();
         break;
         default:
         break;
@@ -487,7 +486,9 @@ static void ble_stack_init(void)
                                                     PERIPHERAL_LINK_COUNT,
                                                     &ble_enable_params);
     APP_ERROR_CHECK(err_code);
-
+    // We have almost no GATTs
+//    ble_enable_params.gatts_enable_params.attr_tab_size = BLE_GATTS_ATTR_TAB_SIZE_MIN;
+//    ble_enable_params.common_enable_params.vs_uuid_count = 1;
     //Check the ram settings against the used number of links
     CHECK_RAM_START_ADDR(CENTRAL_LINK_COUNT,
                                 PERIPHERAL_LINK_COUNT);
@@ -553,6 +554,19 @@ static void power_manage(void)
  */
 // Get config from NVM into _ctx
 static void configInit() {
+    // HACKY - before starting configmgr, see if the config space in the flash contains a magic number
+    // If so, initialise our major/minor from it
+    uint32_t magic=0;
+    hal_bsp_nvmRead(0, 4, (uint8_t*)&magic);
+    if (magic==0x60671519) {
+        _ctx.major_value = hal_bsp_nvmRead16(4);
+        _ctx.minor_value = hal_bsp_nvmRead16(6);
+        // set default name
+        sprintf(_ctx.nameAdv, "%s_%04x_%04x", DEVICE_NAME_BASE, cfg_getMajor_Value(), cfg_getMinor_Value());
+        log_warn("initialised config from production flash setup [%04x,%04x]", _ctx.major_value, _ctx.minor_value);
+    }
+    // Start configmgr module
+    CFMgr_init();
     CFMgr_getOrAddElement(CFG_UTIL_KEY_BLE_IBEACON_MAJOR, &_ctx.major_value, sizeof(uint16_t));
     CFMgr_getOrAddElement(CFG_UTIL_KEY_BLE_IBEACON_MINOR, &_ctx.minor_value, sizeof(uint16_t));
     CFMgr_getOrAddElement(CFG_UTIL_KEY_BLE_IBEACON_PERIOD_MS, &_ctx.advertisingInterval_ms, sizeof(uint16_t));
@@ -562,6 +576,7 @@ static void configInit() {
     CFMgr_getOrAddElement(CFG_UTIL_KEY_BLE_IBEACON_NAME, &_ctx.nameAdv, DEVICE_NAME_LEN);
     CFMgr_getOrAddElement(CFG_UTIL_KEY_BLE_IBEACON_UUID, &_ctx.beacon_uuid_tab, UUID128_SIZE);
     CFMgr_getOrAddElement(CFG_UTIL_KEY_BLE_IBEACON_PASS, &_ctx.passwordTab, PASSWORD_LEN);
+    log_info("config initialised [%s]", _ctx.nameAdv);
 }
 // Request update of NVM with new config
 static void configUpdateRequest() {
@@ -569,7 +584,6 @@ static void configUpdateRequest() {
     _ctx.flashWriteReq = true;
 }
 static void configWrite() {
-    _ctx.flashBusy=true;
     // Wrtie each value using configmgr (who checks if it has changed)
     CFMgr_setElement(CFG_UTIL_KEY_BLE_IBEACON_MAJOR, &_ctx.major_value, sizeof(uint16_t));
     CFMgr_setElement(CFG_UTIL_KEY_BLE_IBEACON_MINOR, &_ctx.minor_value, sizeof(uint16_t));
@@ -580,7 +594,6 @@ static void configWrite() {
     CFMgr_setElement(CFG_UTIL_KEY_BLE_IBEACON_NAME, &_ctx.nameAdv, DEVICE_NAME_LEN);
     CFMgr_setElement(CFG_UTIL_KEY_BLE_IBEACON_UUID, &_ctx.beacon_uuid_tab, UUID128_SIZE);
     CFMgr_setElement(CFG_UTIL_KEY_BLE_IBEACON_PASS, &_ctx.passwordTab, PASSWORD_LEN);
-//    _ctx.flashBusy=false;     // reset in system callback apparently
 }
 /*!
 * Set And Get methods
@@ -627,6 +640,7 @@ int8_t cfg_getTXPOWER_Level( void )
 void cfg_setMinor_Value(uint16_t value)
 {
     _ctx.minor_value = value;
+    sprintf(_ctx.nameAdv, "%s_%04x_%04x", DEVICE_NAME_BASE, cfg_getMajor_Value(), cfg_getMinor_Value());
     configUpdateRequest();
 }
  
@@ -638,6 +652,7 @@ uint16_t cfg_getMinor_Value( void )
 void cfg_setMajor_Value(uint16_t value)
 {
     _ctx.major_value = value;
+    sprintf(_ctx.nameAdv, "%s_%04x_%04x", DEVICE_NAME_BASE, cfg_getMajor_Value(), cfg_getMinor_Value());
     configUpdateRequest();
 }
  
@@ -800,6 +815,8 @@ static void advertising_init(void)
     ble_advdata_t          scanrsp;
     ble_adv_modes_config_t options;
     ble_advdata_manuf_data_t manuf_specific_data; 
+    ble_uuid_t m_adv_uuids[] = {{BLE_UUID_NUS_SERVICE, NUS_SERVICE_UUID_TYPE}};     // Advertise NUS server for at commands over NUS
+
     uint8_t flags = (BLE_GAP_ADV_FLAG_LE_GENERAL_DISC_MODE |
                                         BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED);
     memset(&advdata, 0, sizeof(advdata));
@@ -846,8 +863,8 @@ static void advertising_init(void)
     _ctx.m_adv_params.interval    = MSEC_TO_UNITS(cfg_getADV_IND(), UNIT_0_625_MS); //NON_CONNECTABLE_ADV_INTERVAL;
     _ctx.m_adv_params.timeout     = APP_CFG_NON_CONN_ADV_TIMEOUT;
  
-    scanrsp.uuids_complete.uuid_cnt = sizeof(_ctx.m_adv_uuids) / sizeof(_ctx.m_adv_uuids[0]);
-    scanrsp.uuids_complete.p_uuids  = _ctx.m_adv_uuids;
+    scanrsp.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
+    scanrsp.uuids_complete.p_uuids  = m_adv_uuids;
     scanrsp.name_type = BLE_ADVDATA_FULL_NAME;
     scanrsp.p_tx_power_level = &_ctx.txPowerLevel;
 
@@ -892,8 +909,6 @@ static uint32_t advertising_check_start()
 
     // password check has not been validated
     cfg_resetPasswordOk();
-    // Update name in case major/minor changed 
-    sprintf(_ctx.nameAdv, "%s_%04x_%04x", DEVICE_NAME_BASE, cfg_getMajor_Value(), cfg_getMinor_Value());
     // Change name
     sd_ble_gap_device_name_set(&sec_mode,
                                (const uint8_t *)(&_ctx.nameAdv[0]),
@@ -964,22 +979,19 @@ static void deinit_uart_timeout_handler(void * p_context)
 }
 */
 
-void system_init(void)
-{
-    uint32_t err_code;
-            
+static void system_init(void)
+{            
     softdevice_sys_evt_handler_set(sys_evt_handler);
         
     APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_OP_QUEUE_SIZE, NULL);
-    
+}
+
+static void ble_init(void) {
+    uint32_t err_code = 0;
     db_discovery_init();
 
-    wlog_init(-1);      // replace by 0 to get logs on uart
     ble_stack_init();
 
-    comm_uart_init(); // REV B invert TX RX for board//
-    comm_uart_tx((uint8_t *)"READY\r\n",7, NULL);
-    
     gap_params_init();
     services_init();
     // Init adv parameters and start if required
@@ -997,9 +1009,23 @@ void system_init(void)
 }
 int main(void)
 {
-    configInit();              
-    
     system_init();
+    // Init uart asap in case using for logs also
+    comm_uart_init(); // REV B invert TX RX for board//
+
+#ifdef RELEASE_BUILD
+    wlog_init(-1);      // replace by 0 to get logs on uart
+#else 
+    wlog_init(-1);      // replace by 0 to get logs on uart
+#endif
+    configInit();              
+   log_info("config/log init done");
+    
+    ble_init();
+   log_info("ble system init done");
+    // Tell host we are ready to rock
+    comm_uart_tx((uint8_t *)"READY\r\n",7, NULL);
+   log_info("waiting for commands");
     for (;;)
     {        
         if (_ctx.resetRequested)
@@ -1017,5 +1043,6 @@ int main(void)
         {
             power_manage();
         }
+        comm_uart_tx((uint8_t *)"*",1, NULL);
     }
 }

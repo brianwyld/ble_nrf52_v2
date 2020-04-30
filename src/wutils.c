@@ -17,6 +17,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <ctype.h>
+#include "app_error.h"
 
 #include "wutils.h"
 #include "bsp_minew_nrf51.h"
@@ -33,11 +34,11 @@ void wassert_fn(const char* file, int lnum) {
 //    assert_caller = __builtin_extract_return_addr(__builtin_return_address(0));
 //    log_blocking_fn(0,"assert from [%8x] see APP.elf.lst", assert_caller);
     // reboot
-    // TODO
+    app_error_handler(0x60691519, lnum, file);
 }
 
 
-#define MAX_LOGSZ 256
+#define MAX_LOGSZ 100
     // Default log level depending on build (can be changed by app)
 #ifdef RELEASE_BUILD
 static uint8_t _logLevel = LOGS_RUN;

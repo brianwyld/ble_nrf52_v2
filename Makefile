@@ -5,16 +5,17 @@
 # Default var
 SPECIFIC_REV   = 
 
-ROOT_DIR = d:/wyres/code/BLE_V2
+ROOT_DIR = .
+#d:/wyres/code/BLE_V2
 # Name of output file
-OUTPUT_DIR     = outputs
-OUTPUT_ELF_DIR = ./hexs/
+OUTPUT_DIR     = ./outputs
+OUTPUT_ELF_DIR = /dev/ble_modem
 OUTPUT_FILE    = ble_modem
 OUTPUT_DIRFILE = $(OUTPUT_DIR)/$(OUTPUT_FILE)
 
 # Directories where find config files for tools
 CONFIGDIR = tools
-OPENOCD = "c:/Program Files (x86)/OpenOCD"
+OPENOCD = "c:/soft/openocd-0.10.0"
 OPENOCD_SCRIPT = "$(OPENOCD)/share/openocd/scripts"
 MKDIR = "mkdir.exe"
 
@@ -64,8 +65,8 @@ THUMB = -mthumb
 # Default flags for C 
 UCFLAGS  += -Wall -std=c99
 #UCFLAGS  += -fmessage-length=0 -fdata-sections -ffunction-sections
-# Default flags for linkage 
-ULDFLAGS = -Wl,-Map=$(OUTPUT_DIRFILE).map,-lm
+# Default flags for linkage. Note use of -nostdlib to avoid the standard GCC stdlibc (we are using baselibc)
+ULDFLAGS = -Wl,-Map=$(OUTPUT_DIRFILE).map,-lm,-nostdlib
 # ULDFLAGS = -lm -Wl,-Map=$(OUTPUT_DIRFILE).map,--gc-sections
 #ULDFLAGS += -Wl,-Map=$(OUTPUT_DIRFILE).map,-static
 
@@ -76,7 +77,7 @@ ULDFLAGS = -Wl,-Map=$(OUTPUT_DIRFILE).map,-lm
 RCFLAGS  = -Os
 # RCFLAGS  += -fshort-enums
 # RCFLAGS  += -fpack-struct >>> build failed
-# RCFLAGS  = -O0 -g
+# RCFLAGS  = -O1 -g
 # RCFLAGS  += -fno-threadsafe-statics
 # RCFLAGS  += -ffunction-sections
 # RCFLAGS  += -fdata-sections
@@ -86,7 +87,7 @@ RLDFLAGS =
 # Debug flags additional for ASM 
 DASFLAGS =
 # Debug flags additional for C 
-DCFLAGS  = -O1 -g3
+DCFLAGS  = -O0 -g3
 # Debug flags additional for linkage 
 DLDFLAGS = 
 
@@ -110,6 +111,7 @@ CSRC += $(wildcard $(C_SOURCE_PATH)/*.c)
 #CSRC += ./src/main.c
 #CSRC += ./src/timer_watchdog.c
 #CSRC += ./src/wat_cmd.c
+CSRC += $(wildcard ./baselibc/src/*.c)
 CSRC += ./components/boards/boards.c
 CSRC += ./components/toolchain/system_nrf51.c
 CSRC += ./components/ble/common/ble_advdata.c
@@ -146,6 +148,8 @@ CSRC += ./components/libraries/bsp/bsp_btn_ble.c
 
 # List of directories to include
 UINCDIR = ./includes
+UINCDIR += ./baselibc/include
+UINCDIR += ./baselibc/src/templates
 UINCDIR += ./config
 UINCDIR += ./GNU_Tools_Arm_Embedded/7_2018-q2-update/arm-none-eabi/include
 UINCDIR += ./components
@@ -388,8 +392,11 @@ binsize: bin
 disassemble:
 	$(OBJDUMP) -hd $(OUTPUT_DIRFILE).elf > $(OUTPUT_DIRFILE).lss
 
-itall: clean all hex bin disassemble size copy
+itall: clean release hex bin disassemble size copy
 
+itall_debug: clean debug hex bin disassemble size copy
+
+# NOTE flash/debug rules here for info, untested in specific project
 # Reset target
 reset:
 	# $(OPENOCD) -s $(OPENOCD_SCRIPT) -f $(CONFIGDIR)/openocd/init_reset.cfg -c "init; reset; shutdown"

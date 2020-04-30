@@ -12,9 +12,11 @@ MEMORY
 
   /* RAM starts at 0x20000000 and is size 0x4000 (16kb) */
   /* our RAM area is just after softdevice area , up to the end */
-  /* Softdevice S130 requires 0x1288+'configurable resources': min is 0x13C8 if using minimal resources (no info on what that might mean)
-  /* so we start at this value, for a length of (0x4000-0x13C8) ie 0x2c38*/
-  RAM (rwx) :  ORIGIN = 0x200013c8, LENGTH = 0x4000-0x13C8  
+  /* Softdevice S130 requires 0x1288+'configurable resources': min is 0x13C8 if using minimal resources 
+  /** see components/softdevice/common/softdevice_handle/app_ram_base.h for values based on configs */
+  /* 0 Central + 1 periph + 1 UUID -> 0x20001fe8 */
+  /* 1 Central + 1 periph + 1 UUID -> 0x20002418 -> 25E0 ? (in debugger, break in softdevice_enable() to see its calulcation */
+  RAM (rwx) :  ORIGIN = 0x200025E0, LENGTH = 0x4000-0x25E0
   /* Note we set the heap to size 0 */
 }
 

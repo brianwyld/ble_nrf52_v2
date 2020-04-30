@@ -14,28 +14,29 @@ You have to set your gcc path in makefile :
 GNU_INSTALL_ROOT := C:\Program Files (x86)\GNU Tools ARM Embedded\8 2019-q3-update 
 
 Run "make cleanOutputs" to clean all previous outputs.
-Run "make itall" to build everything. hex and elf files are copied in C:/dev/BLE_MODEM for debugging purposes.
+Run "make itall" to build everything for production (no debug)
+Run "make itall_debug" to build everything for debug
 
 ## flashing with ST-LINK
 
-Attach ST-Link to the target and run "flash_w_stlink.bat" with "app_hex_file.hex" as first argument and "major_minor_identifier_in_hex" as second argument.
+Attach ST-Link to the target and run "flash_w_stlink.bat" (in script) with arguements: "ble_modem","major_in_hex", minor_in_hex"
 
 Example : for flashing ble_modem.hex for the preidentified target 0x0002002e type :
 ```
-flash_w_stlink.bat ble_modem.hex 0002002e
+flash_w_stlink.bat ble_modem 0002 002e
 ```
 
 ## debugging with st-link
 
-The debug process on vscode is based on launch.json settings file.
-Have a look on launch.json to proper use it (openocd path, gdb, executable, etc).
+The debug process on vscode is based on launch.json settings file and uses just openocd (no gdb)
+Have a look on launch.json to proper use it (openocd path, executable, etc).
 
 After that you can launch debugging as usual on vscode.
 
 ## debugging with j-link
 
 The debug process on vscode is based on launch.json settings file.
-Have a look on launch.json to proper use it (openocd path, gdb, executable, etc).
+Have a look on launch.json to proper use it (openocd path, executable, etc).
 
 If your target has to be powered by jlink, be sure to entering "power on" or "power on perm" with jlink.exe before.  
 
@@ -48,8 +49,6 @@ After that you can launch debugging as usual on vscode.
 
 
 # Warning
-
-The make command works and build the hex file BUT the firmware does not seem to work properly as intended (iBeacon mode does not work for example, not seen by Wyres Android app). The problem is maybe located in the linker script, further investigations needed.
 
 #Known issues
 
@@ -65,18 +64,7 @@ With softdevice enabled in your project, you must be stricly aligned with SoftDe
 ```
 APP_RAM_BASE address(minimum required value) = 0x20000000 + SoftDevice RAM consumption (Minimum: 0x200013C8)
 ```
-
-Then your linker script describes RAM section as :
-
-```
-MEMORY
-{
-  FLASH (rx) : ORIGIN = 0x1b000, LENGTH = 0x1889F
-  RAM (xrw) : ORIGIN = 0x20002000, LENGTH = 0x2000
-  USER_CFG(r!x) : ORIGIN = 0x338A0, LENGTH = 0x1000
-  
-}
-```
+Central and Peripheral operation consume a lot of ram : see components/softdevice/common/softdevice_handle/app_ram_base.h
 
 ## User defined symbols and variables
 
@@ -108,12 +96,14 @@ For example :
 ```
 shows memory consumption of ibs_scan.c. (due to declaration of ibs_scan_result_t ibs_scan_results[IBS_SCAN_LIST_LENGTH]; )
 
-libc memory use also a big amount of RAM...
+Note that this project uses baselibc project from github to reduce RAM and flash consumption!
 
 Further investigation are needed to reduce the global RAM memory consumption to avoid this kind of returned error :
 ```
 arm-none-eabi/bin/ld.exe: region RAM overflowed with stack collect2.exe: error: ld returned 1 exit status
 ```
+
+Currently 1 Central+1 Periph builds with a scan list of 100 items.
 
 
 

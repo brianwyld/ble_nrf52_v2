@@ -28,6 +28,7 @@ static app_uart_comm_params_t _uart_comm_params[UART_CNT] =
     }
     };
 
+
 // On this module we define 2 UARTs:
 // - communication with external cards (AT command set processing) 
 // - debug logging
@@ -150,7 +151,6 @@ bool hal_bsp_nvmWrite8(uint16_t off, uint8_t v) {
             currentU32Val = ((currentU32Val & 0x00FFFFFF) | (v<<24));
             break;
     }
-    app_setFlashBusy();    
     do
     {
         status = sd_flash_write(addr_u32aligned, &currentU32Val, 1);        // Write 1 32 bit value

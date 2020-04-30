@@ -21,7 +21,6 @@ typedef int (*UART_TX_FN_T)(uint8_t* output, int len, UART_TX_READY_FN_T txready
 
 /******************************GLOBAL FUNCTIONS********************************/
 
-void system_init(void);
 void app_reset_request();
 void app_setFlashBusy();
 bool app_isFlashBusy();

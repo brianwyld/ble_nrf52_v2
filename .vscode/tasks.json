@@ -1,0 +1,81 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": false,
+        "clear": false
+    },
+    "tasks": [
+        {
+            "label": "build_debug",
+            "type": "shell",
+            "args": [],
+            "windows": {
+                "command": "c:/mingw-w64/i686-8.1.0-posix-dwarf-rt_v6-rev0/mingw32/bin/mingw32-make -C ${workspaceRoot} --makefile=Makefile itall_debug"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "build_prod",
+            "type": "shell",
+            "args": [],
+            "windows": {
+                "command": "c:/mingw-w64/i686-8.1.0-posix-dwarf-rt_v6-rev0/mingw32/bin/mingw32-make -C ${workspaceRoot} --makefile=Makefile itall"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+        {
+            "label": "flash_app_and_id",
+            "type": "shell",
+            "options" : {"cwd": "${workspaceRoot}/scripts"},
+            "args": ["ble_modem", "${input:ble_maj}", "${input:ble_min}"],
+            "windows": {
+                "command": "${workspaceRoot}/scripts/flash_w_stlink.bat"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "debug",
+            "dependsOn": [
+                "build_debug",
+                "flash_app_and_id"
+            ],
+            "dependsOrder": "sequence"
+        },
+        {
+            "label": "prod",
+            "dependsOn": [
+                "build_prod",
+                "flash_app_and_id"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": [
+                "$gcc"
+            ]
+        }
+    ],
+    "inputs": [
+        {
+          "type": "promptString",
+          "id": "ble_maj",
+          "description": "Enter BLE major id for prod?",
+          "default": "8201"
+        },
+        {
+            "type": "promptString",
+            "id": "ble_min",
+            "description": "Enter BLE minor id for prod?",
+            "default": "0100"
+          },
+      ],
+
+}

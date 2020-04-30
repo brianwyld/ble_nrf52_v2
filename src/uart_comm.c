@@ -4,6 +4,8 @@
 #include <string.h>
 #include <inttypes.h>
 
+#include <stdio.h>
+
 #include "app_uart.h"
 
 #include "wutils.h"
@@ -97,9 +99,30 @@ static void uart_event_handler(app_uart_evt_t * p_event)
     }
 }
 
-/*
-                    err_code = ble_nus_string_send(&m_nus, data_array, index);
-                    if (err_code != NRF_ERROR_INVALID_STATE) {
-                        APP_ERROR_CHECK(err_code);
-                    }
-*/
+/* to get libc to be ok */
+static size_t
+stdin_read(FILE *fp, char *bp, size_t n)
+{
+    return 0;
+}
+
+static size_t
+stdout_write(FILE *fp, const char *bp, size_t n)
+{
+    comm_uart_tx((uint8_t*)bp, n,NULL);
+    return n;
+}
+
+static struct File_methods _stdin_methods = {
+    .write = stdout_write,
+    .read = stdin_read
+};
+
+static struct File _stdin = {
+    .vmt = &_stdin_methods
+};
+
+struct File *const stdin = &_stdin;
+struct File *const stdout = &_stdin;
+struct File *const stderr = &_stdin;
+

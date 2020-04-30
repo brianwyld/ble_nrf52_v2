@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include "main.h"
 
-#define IBS_SCAN_LIST_LENGTH 500
+#define IBS_SCAN_LIST_LENGTH 100
 
 #define IBS_SCAN_HEADER_LENGTH 9
 #define IBS_SCAN_UUID_LENGTH 16

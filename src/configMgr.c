@@ -253,6 +253,7 @@ uint8_t CFMgr_getElementLen(uint16_t key) {
 // Set an element value. Creates key if unknown if it can
 bool CFMgr_setElement(uint16_t key, void* data, uint8_t len) {
     bool ret = false;
+        /** FLASH WRITING NOT YET WORKING TODO BW
     cfgLockR();
     int idx = findKeyIdx(key);
     if (idx<0) {
@@ -285,6 +286,7 @@ bool CFMgr_setElement(uint16_t key, void* data, uint8_t len) {
     if (ret) {
         informListeners(key);
     }
+    */
     return ret;
 }
 static bool isNVMDifferent(uint8_t* newdata, uint16_t nvmoff, uint8_t len) {
@@ -377,12 +379,14 @@ void CFMgr_init(void) {
         _cfg.indexStart=NVM_HDR_SIZE;
         _cfg.storeStart=_cfg.indexStart + (MAX_KEYS+1)*INDEX_SIZE;
         _cfg.storeOffset = _cfg.storeStart; 
+        /** FLASH WRITING NOT YET WORKING TODO BW
         cfgLockW();
         hal_bsp_nvmWrite8(0,0);
         hal_bsp_nvmWrite8(1,0);
         hal_bsp_nvmWrite16(2, _cfg.indexStart);
         hal_bsp_nvmWrite16(4, _cfg.storeStart);
         cfgUnlockW();
+        */
         // just log passage : no assert (as this writes to PROM!)
 //        log_fn_fn();
     }
@@ -423,6 +427,9 @@ void CFMgr_init(void) {
  * !! MUST HAVE cfgLockW/cfgUnlockW round this call
  */
 static int createKey(uint16_t k, uint8_t l, uint8_t* d) {
+    return -1;
+    /** FLASH WRITING NOT YET WORKING TODO BW
+
     assert(l!=0);
     if (_cfg.nbKeys>=MAX_KEYS) {
         return -1;       // no joy
@@ -475,6 +482,7 @@ static int createKey(uint16_t k, uint8_t l, uint8_t* d) {
     }
 
     return ret;
+    */
 }
 
 // Find the index in the key table for the given key, or -1 if not found
@@ -526,6 +534,7 @@ static void cfgLockW() {
     // No mutex yet
     // Unlock PROM so can wrtie to it
     hal_bsp_nvmUnlock();
+//    app_setFlashBusy();         // To avoid going low power while writing to flash
 }
 static void cfgUnlockW() {
     // Lock PROM so can't accidently write to it
