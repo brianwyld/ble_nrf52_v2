@@ -18,13 +18,13 @@
 // UARTs config
 static app_uart_comm_params_t _uart_comm_params[UART_CNT] =
     {{
-        UART0_RX_PIN_NUMBER, // RX_PIN_NUMBER A
-        UART0_TX_PIN_NUMBER, // TX_PIN_NUMBER A
-        UART0_RTS_PIN_NUMBER,
-        UART0_CTS_PIN_NUMBER,
-        APP_UART_FLOW_CONTROL_DISABLED,
-        false,
-        115200,
+        .rx_pin_no = UART0_RX_PIN_NUMBER, // RX_PIN_NUMBER A
+        .tx_pin_no = UART0_TX_PIN_NUMBER, // TX_PIN_NUMBER A
+        .rts_pin_no = UART0_RTS_PIN_NUMBER,
+        .cts_pin_no = UART0_CTS_PIN_NUMBER,
+        .flow_control = APP_UART_FLOW_CONTROL_DISABLED,
+        .use_parity = false,
+        .baud_rate = 115200,
     }
     };
 

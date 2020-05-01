@@ -7,6 +7,7 @@
 //#include "ble_nus_c.h"
 #include "ble_nus.h"
 #include "ble_hci.h"
+#include "ble_db_discovery.h"
 
 #include "wutils.h"
 
@@ -56,12 +57,14 @@ void comm_ble_connect_client() {
     _ctx.connected = true;
     _ctx.rx_index = 0;      // just in case
 }
-void comm_ble_disconnect() {
-/*
+void comm_ble_discovery_dispatch(ble_db_discovery_evt_t * p_evt) {
+/* not doing nuc_c currently
     if (p_evt!=NULL) {
         ble_nus_c_on_db_disc_evt(&_ctx.m_nus_c, p_evt);
     }
     */
+}
+void comm_ble_disconnect_client() {
     // Seems a little brutual to break its connection but there you go?
     if (_ctx.m_nus.conn_handle!=BLE_CONN_HANDLE_INVALID) {
         uint32_t err_code = sd_ble_gap_disconnect(_ctx.m_nus.conn_handle,
@@ -98,7 +101,7 @@ int comm_ble_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
         }
     } else {
         // disconnnect NUS
-        comm_ble_disconnect(NULL);
+        comm_ble_disconnect_client();
     }
     return 0;       // all sent
 }

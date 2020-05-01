@@ -105,12 +105,6 @@ ASRC = ./components/toolchain/gcc/gcc_startup_nrf51.s
 
 C_SOURCE_PATH = ./src
 CSRC += $(wildcard $(C_SOURCE_PATH)/*.c)
-#CSRC += ./src/ibs_scan.c
-#CSRC += ./src/ibs_ibeacon.c
-#CSRC += ./src/ibs_at_cds.c
-#CSRC += ./src/main.c
-#CSRC += ./src/timer_watchdog.c
-#CSRC += ./src/wat_cmd.c
 CSRC += $(wildcard ./baselibc/src/*.c)
 CSRC += ./components/boards/boards.c
 CSRC += ./components/toolchain/system_nrf51.c
@@ -260,7 +254,8 @@ UDEFS += NRF51
 UDEFS += BLE_STACK_SUPPORT_REQD
 UDEFS += __HEAP_SIZE=0
 UDEFS += NRF51422
-UDEFS += BOARD_PCA10028
+UDEFS += BOARD_CUSTOM
+UDEFS += BOARD_W_FILLE_MINEW_MS49SF2
 UDEFS += S130
 UDEFS += NRF_SD_BLE_API_VERSION=2
 UDEFS += BSP_UART_SUPPORT

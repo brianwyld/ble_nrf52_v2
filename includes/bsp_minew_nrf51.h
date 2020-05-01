@@ -22,6 +22,7 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "boards.h"
 #include "app_uart.h"
 
 #ifdef __cplusplus
@@ -30,14 +31,13 @@ extern "C" {
 
 // Uart
 #define UART_CNT (1)            // nrf only has 1 uart block..
-#define UART0_RX_PIN_NUMBER (-1)
-#define UART0_TX_PIN_NUMBER (-1)
-#define UART0_RTS_PIN_NUMBER (-1)
-#define UART0_CTS_PIN_NUMBER (-1)
+#define UART0_RX_PIN_NUMBER (RX_PIN_NUMBER)
+#define UART0_TX_PIN_NUMBER (TX_PIN_NUMBER)
+#define UART0_RTS_PIN_NUMBER (RTS_PIN_NUMBER)
+#define UART0_CTS_PIN_NUMBER (CTS_PIN_NUMBER)
 
 #define UART_TX_BUF_SIZE        64                             /**< UART TX buffer size. */
 #define UART_RX_BUF_SIZE        64                             /**< UART RX buffer size. */
-
 
 bool hal_bsp_nvmLock();
 bool hal_bsp_nvmUnlock();

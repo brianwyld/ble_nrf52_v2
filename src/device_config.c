@@ -1,0 +1,333 @@
+
+/** Device config module */
+#include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+
+#include "wutils.h"
+#include "bsp_minew_nrf51.h"
+#include "main.h"
+#include "device_config.h"
+
+#ifndef FW_MAJOR
+#define FW_MAJOR (2)
+#endif
+#ifndef FW_MINOR 
+#define FW_MINOR (0)
+#endif
+#define DEVICE_NAME_BASE             "w"                                       /**< Name of device when for connection beacons. Will be included in the advertising data. */
+#define DEVICE_NAME_LEN             16      // w_0000_0000
+#define PASSWORD_LEN    (4)
+#define MAGIC_CFG_SAVED (0x60671520)    // magic number meaning full saved config present in flash
+#define MAGIC_CFG_PROD (0x60671519)     // magic number meaning just production saved config present in flash
+
+// Device config structure
+static struct {
+    uint32_t magic;
+    //iBeacon config
+    uint16_t major_value;
+    uint16_t minor_value;
+    uint16_t advertisingInterval_ms; // Default advertising interval 100 ms
+    uint16_t company_id; // apple 0x0059 -> Nordic
+    uint8_t beacon_uuid_tab[UUID128_SIZE];
+    // config for connectable adverts
+    char nameAdv[DEVICE_NAME_LEN];
+    uint8_t passwordTab[PASSWORD_LEN]; // Password
+    uint8_t masterPasswordTab[PASSWORD_LEN]; // Password
+    uint8_t isConnectable;        // is it allowed to connect via GAP for config or uart pass-thru?
+    int8_t txPowerLevel; // Default -4dBm
+    uint8_t extra_value;    // usually related to tx power
+    bool isPasswordOK;              // Indicates if password has been validated or not
+    bool flashWriteReq;
+} _ctx = {
+    .magic=MAGIC_CFG_SAVED,             
+    .advertisingInterval_ms = 300, 
+    .txPowerLevel = -20,        // RADIO_TXPOWER_TXPOWER_Neg20dBm,  
+    .major_value = 0xFFFF,
+    .minor_value = 0xFFFF,
+    .beacon_uuid_tab = {0xE2, 0xC5, 0x6D, 0xB5, 0xDF, 0xFB, 0x48, 0xD2, 0xB0, 0x60, 0xD0, 0xF5, 0xA7, 0x10, 0x96, 0xE0},
+    .nameAdv = "W_FFFF_FFFF", 
+    .isConnectable=false,
+    .company_id = 0x004C, 
+    .extra_value = 0xC3,
+    .passwordTab = {'0', '0', '0', '0'},
+    .masterPasswordTab = {'6', '0', '6', '7'},
+};
+// Not in config
+static bool _isPasswordOK = false;
+
+/** Config handling
+ */
+// Get config from NVM into _ctx
+void cfg_init() {
+    // Simple flash config management here - just write the entire structrue in the flash page
+    // Check if our magic number is there and read from page (ie valid config present) otherwise use compile time defaults
+    uint32_t magic=0;
+    hal_bsp_nvmRead(0, 4, (uint8_t*)&magic);
+    if (magic==MAGIC_CFG_PROD) {
+        // Only the major/minor were written by production process
+        _ctx.major_value = hal_bsp_nvmRead16(4);
+        _ctx.minor_value = hal_bsp_nvmRead16(6);
+        // set default name
+        sprintf(_ctx.nameAdv, "%s_%04x_%04x", DEVICE_NAME_BASE, cfg_getMajor_Value(), cfg_getMinor_Value());
+        log_warn("initialised config from production flash setup [%04x,%04x]", _ctx.major_value, _ctx.minor_value);
+    } else if (magic==MAGIC_CFG_SAVED) {
+        // Proper saved config present
+        // load full structure
+        hal_bsp_nvmRead(0, sizeof(_ctx), (uint8_t*)&_ctx);
+        log_info("config initialised from flash [%s]", _ctx.nameAdv);
+    } else {
+        // go with defaults
+        log_info("config initialised from defaults[%s]", _ctx.nameAdv);
+    }
+}
+// Request update of NVM with new config
+static void configUpdateRequest() {
+    // Set flag to do it in main loop (for ble timing reasons)
+    _ctx.flashWriteReq = true;
+}
+void cfg_writeCheck() {
+    if (_ctx.flashWriteReq) {
+        app_setFlashBusy();     // not sure if this works
+        // Write entire structure
+        hal_bsp_nvmWrite(0, sizeof(_ctx), (uint8_t*)&_ctx);
+    }
+    _ctx.flashWriteReq = false;
+}
+/*!
+* Set And Get methods
+*/
+int cfg_getFWMajor() {
+    return FW_MAJOR;
+}
+int cfg_getFWMinor() {
+    return FW_MINOR;
+}
+
+void cfg_setUUID(uint8_t* value)
+{
+    if (memcmp(value, _ctx.beacon_uuid_tab, UUID128_SIZE)!=0) {
+        memcpy(_ctx.beacon_uuid_tab, value, UUID128_SIZE);
+        configUpdateRequest();
+    }
+}
+ 
+uint8_t* cfg_getUUID( void )
+{
+    return _ctx.beacon_uuid_tab;
+}
+void cfg_setADV_IND(uint32_t value)
+{
+    if (value!=_ctx.advertisingInterval_ms) {
+        _ctx.advertisingInterval_ms = value;
+        configUpdateRequest();
+    }
+}
+ 
+uint16_t cfg_getADV_IND( void )
+{
+    return _ctx.advertisingInterval_ms;
+}
+ 
+void cfg_setTXPOWER_Level(int8_t value)
+{
+    if (value!=_ctx.txPowerLevel) {
+        _ctx.txPowerLevel = value;
+        configUpdateRequest();
+    }
+}
+ 
+int8_t cfg_getTXPOWER_Level( void )
+{
+    return _ctx.txPowerLevel;
+}
+ 
+void cfg_setConnectable(uint8_t value)
+{
+    if (value!=_ctx.isConnectable) {
+        _ctx.isConnectable = value;
+        configUpdateRequest();
+    }
+}
+ 
+uint8_t cfg_getConnectable( void )
+{
+    return _ctx.isConnectable;
+}
+ 
+void cfg_setMinor_Value(uint16_t value)
+{
+    if (value!=_ctx.minor_value) {
+        _ctx.minor_value = value;
+        sprintf(_ctx.nameAdv, "%s_%04x_%04x", DEVICE_NAME_BASE, cfg_getMajor_Value(), cfg_getMinor_Value());
+        configUpdateRequest();
+    }
+}
+ 
+uint16_t cfg_getMinor_Value( void )
+{
+    return _ctx.minor_value;
+}
+ 
+void cfg_setMajor_Value(uint16_t value)
+{
+    if (value!=_ctx.major_value) {
+        _ctx.major_value = value;
+        sprintf(_ctx.nameAdv, "%s_%04x_%04x", DEVICE_NAME_BASE, cfg_getMajor_Value(), cfg_getMinor_Value());
+        configUpdateRequest();
+    }
+}
+ 
+uint16_t cfg_getMajor_Value( void )
+{
+    return _ctx.major_value;
+}
+
+char* cfg_getAdvName() {
+    return _ctx.nameAdv;
+}
+
+void cfg_resetPasswordOk()
+{
+   _isPasswordOK = false;
+}
+
+bool cfg_isPasswordOk() {
+    return _isPasswordOK;
+} 
+bool cfg_checkPassword( char* given )
+{
+    for(int i=0;i<PASSWORD_LEN;i++) {
+        if (_ctx.passwordTab[i]!=given[i]) {
+            _isPasswordOK = false;
+            return false;
+        }
+    }
+    _isPasswordOK = true;
+    return true;
+}
+bool cfg_setPassword(char* oldp, char* newp) 
+{
+    if (cfg_checkPassword(oldp)) {
+        for(int i=0;i<PASSWORD_LEN;i++) {
+            _ctx.passwordTab[i]=newp[i];
+        }
+        configUpdateRequest();
+        return true;
+    }
+    return false;
+} 
+void cfg_setCompanyID(uint16_t value)
+{
+    if (value!=_ctx.company_id) {
+        _ctx.company_id = value;
+        configUpdateRequest();
+    }
+}
+ 
+uint16_t cfg_getCompanyID( void )
+{
+    return _ctx.company_id;
+}
+ 
+void cfg_setExtra_Value(uint8_t value) {
+    if (value!=_ctx.extra_value) {
+        _ctx.extra_value = value;
+        configUpdateRequest();
+    }
+}
+uint8_t cfg_getExtra_Value() {
+    return _ctx.extra_value;
+}
+
+
+// Generic access by keys
+// Get key value or 0 if not found
+int cfg_getByKey(uint16_t key, uint8_t* vp, int maxlen) {
+    switch (key) {
+        case DCFG_KEY_MAJOR: {
+            *((uint16_t*)vp) = cfg_getMajor_Value();
+            return sizeof(uint16_t);
+        }
+        case DCFG_KEY_MINOR: {
+            *((uint16_t*)vp) = cfg_getMinor_Value();
+            return sizeof(uint16_t);
+        }
+        case DCFG_KEY_ADV_INT: {
+            *((uint16_t*)vp) = cfg_getADV_IND();
+            return sizeof(uint16_t);
+        }
+        case DCFG_KEY_COMP_ID: {
+            *((uint16_t*)vp) = cfg_getCompanyID();
+            return sizeof(uint16_t);
+        }
+        case DCFG_KEY_TXPOW: {
+            *((int8_t*)vp) = cfg_getTXPOWER_Level();
+            return sizeof(int8_t);
+        }
+        case DCFG_KEY_CONNECTABLE: {
+            *vp = cfg_getConnectable();
+            return sizeof(uint8_t);
+        }
+        case DCFG_KEY_UUID: {
+            int l = (maxlen<UUID128_SIZE ? maxlen : UUID128_SIZE);
+            memcpy(vp, _ctx.beacon_uuid_tab, l);
+            return UUID128_SIZE;
+        }
+        case DCFG_KEY_PASS: {
+            int l = (maxlen<PASSWORD_LEN ? maxlen : PASSWORD_LEN);
+            memcpy(vp, _ctx.beacon_uuid_tab, l);
+            return PASSWORD_LEN;
+        }
+        default:
+            return 0;
+    }
+}
+// Set key value, return real key length
+int cfg_setByKey(uint16_t key, uint8_t* vp, int len) {
+    switch (key) {
+        case DCFG_KEY_MAJOR: {
+            cfg_setMajor_Value(*((uint16_t*)vp));
+            return sizeof(uint16_t);
+        }
+        case DCFG_KEY_MINOR: {
+            cfg_setMinor_Value(*((uint16_t*)vp));
+            return sizeof(uint16_t);
+        }
+        case DCFG_KEY_ADV_INT: {
+            cfg_setADV_IND(*((uint16_t*)vp));
+            return sizeof(uint16_t);
+        }
+        case DCFG_KEY_COMP_ID: {
+            cfg_setCompanyID(*((uint16_t*)vp));
+            return sizeof(uint16_t);
+        }
+        case DCFG_KEY_TXPOW: {
+            cfg_setTXPOWER_Level(*((int8_t*)vp));
+            return sizeof(int8_t);
+        }
+        case DCFG_KEY_CONNECTABLE: {
+            cfg_setConnectable(*vp);
+            return sizeof(uint8_t);
+        }
+        
+        case DCFG_KEY_UUID: {
+            int l = (len<UUID128_SIZE ? len : UUID128_SIZE);
+            memcpy(_ctx.beacon_uuid_tab, vp, l);
+            return UUID128_SIZE;
+        }
+        default:
+            return 0;       // not found
+    }
+}
+int cfg_iterateKeys(void* odev, PK_CB_T pkcb) {
+    static uint16_t KEYS[] = {DCFG_KEY_MAJOR, DCFG_KEY_MINOR, DCFG_KEY_ADV_INT, DCFG_KEY_TXPOW, 
+                        DCFG_KEY_UUID, DCFG_KEY_COMP_ID, DCFG_KEY_PASS, DCFG_KEY_CONNECTABLE};
+    uint8_t d[16];
+    for(int i=0; i<(sizeof(KEYS)/sizeof(KEYS[0]));i++) {
+        int l = cfg_getByKey(KEYS[i], &d[0], 16);
+        (*pkcb)(odev, KEYS[i], d, l);
+    }
+    return sizeof(KEYS)/sizeof(KEYS[0]);
+}

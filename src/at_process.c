@@ -17,9 +17,9 @@
 #include "softdevice_handler.h"
 
 #include "wutils.h"
+#include "device_config.h"
 
 #include "main.h"
-#include "configMgr.h"
 #include "at_process.h"
 #include "comm_uart.h"
 
@@ -207,15 +207,13 @@ static ATRESULT atcmd_info(uint8_t nargs, char* argv[], void* odev) {
     return ATCMD_OK;
 }
 
-static void printKey(void* odev, uint16_t k) {
-    uint8_t d[16];
+static void printKey(void* odev, uint16_t k, uint8_t* d, int l) {
     // Must explicitly check for illegal key (0000) as used for error check ie assert in configmgr
-    if (k==CFG_KEY_ILLEGAL) {
+    if (k==DCFG_KEY_ILLEGAL) {
         wconsole_println(odev, "Key[%04x]=NOT FOUND", k);
         return;
     }
-    // get element max data length 16
-    int l =  CFMgr_getElement(k, d, 16);
+    // print element max data length 16
     switch(l) {
         case 0:
         case -1:  {
@@ -252,13 +250,6 @@ static void printKey(void* odev, uint16_t k) {
         }
     }
 }
-// Bit hacky for the config mgr key dump callback to print out the keys
-static void* _pkcb_odev = NULL;
-static void printKeyCB(uint16_t k) {
-    if (_pkcb_odev!=NULL) {
-        printKey(_pkcb_odev, k);
-    }
-}
 
 static ATRESULT atcmd_getcfg(uint8_t nargs, char* argv[], void* odev) {
     // Check args - if 1 present then show just that config element else show all
@@ -268,41 +259,32 @@ static ATRESULT atcmd_getcfg(uint8_t nargs, char* argv[], void* odev) {
     if (nargs==1) {
         // get al config elements and print them
         // Currently not possible as uart output buffer can't hold them all
-//        CFMgr_iterateKeys(-1, &printKey);
-        // Tell user about groups instead
-        wconsole_println(odev, "Config modules available:");
-        wconsole_println(odev, " 00 - System");
-        wconsole_println(odev, " 01 - LoRaWAN");
-        wconsole_println(odev, " 04 - AppCore");
-        wconsole_println(odev, " 05 - AppMods"); 
+        cfg_iterateKeys(odev, &printKey);
     } else if (nargs==2) {
         int k=0;
         int kl = strlen(argv[1]);
-        if (kl==2) {
-            // get 2 digit key module
-            if (sscanf(argv[1], "%2x", &k)<1) {
-                wconsole_println(odev, "Bad module [%s] must be 2 digits", argv[1]);
-                return ATCMD_BADARG;
-            } else {
-                // and dump all keys with this module
-                _pkcb_odev = odev;
-                CFMgr_iterateKeys(k, &printKeyCB);        // Doesnt work as no outpût device 
-            }
-        } else if (kl==4) {
+        if (kl==4) {
             if (sscanf(argv[1], "%4x", &k)<1) {
                 wconsole_println(odev, "Bad key [%s] must be 4 hex digits", argv[1]);
                 return ATCMD_BADARG;
             } else {
-                printKey(odev, k);
+                uint8_t d[16];
+                int l = cfg_getByKey(k, &d[0], 16);
+                printKey(odev, k, &d[0], l);
             }
         } else {
-            wconsole_println(odev, "Error : Must give either key module as 2 digits, or full key of 4 digits");
+            wconsole_println(odev, "Error : Must give key of 4 digits");
             return ATCMD_BADARG;
         }
     }
     return ATCMD_OK;
 }
 static ATRESULT atcmd_setcfg(uint8_t nargs, char* argv[], void* odev) {
+    // Must have done a password login to set params
+    if (!cfg_isPasswordOk()) {
+        return ATCMD_GENERR;
+    }
+
     // args : cmd, config key (always 4 digits hex), config value as hex string (0x prefix) or decimal
     if (nargs<3) {
         return ATCMD_BADARG;
@@ -317,7 +299,9 @@ static ATRESULT atcmd_setcfg(uint8_t nargs, char* argv[], void* odev) {
         wconsole_println(odev, "Key[%s] must be 4 digits", argv[1]);
     } else {
         // parse value
-        int l = CFMgr_getElementLen(k);
+        // Get the length it should be by a dummy get
+        uint32_t d=0;
+        int l = cfg_getByKey(k, (uint8_t*)&d, 4);
         switch(l) {
             case 0: {
                 wconsole_println(odev, "Key[%s] does not exist", argv[1]);
@@ -345,8 +329,8 @@ static ATRESULT atcmd_setcfg(uint8_t nargs, char* argv[], void* odev) {
                         return ATCMD_BADARG;
                     }
                 }
-                CFMgr_setElement(k, &v, l);
-                printKey(odev, k);        // Show the value now in the config 
+                cfg_setByKey(k, (uint8_t*)&v, l);
+                printKey(odev, k, (uint8_t*)&v, l);        // Show the value now in the config 
                 break;
             }
 
@@ -378,8 +362,8 @@ static ATRESULT atcmd_setcfg(uint8_t nargs, char* argv[], void* odev) {
                     val[i] = b;
                     vp+=2;
                 }
-                CFMgr_setElement(k, &val[0], l);
-                printKey(odev, k);
+                cfg_setByKey(k, &val[0], l);
+                printKey(odev, k, &val[0], l);
                 break;
             }
         }
@@ -435,6 +419,7 @@ static ATRESULT atcmd_password(uint8_t nargs, char* argv[], void* odev) {
         }
     }
     // Else not
+    cfg_resetPasswordOk();
     return ATCMD_GENERR;
 }
 
