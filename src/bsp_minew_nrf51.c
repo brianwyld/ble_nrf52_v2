@@ -9,8 +9,8 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "nrf_soc.h"
 #include "app_uart.h"
-
 #include "main.h"
 
 #include "bsp_minew_nrf51.h"
@@ -173,12 +173,37 @@ bool hal_bsp_nvmWrite16(uint16_t off, uint16_t v) {
 }
 
 bool hal_bsp_nvmWrite(uint16_t off, uint8_t len, uint8_t* buf) {
-    // Writing N bytes, worth the optimisation? TODO later
-    bool ret = true;
-    for(int i=0;i<len;i++) {
-        ret &= hal_bsp_nvmWrite8(off+i, *(buf+i));
+    // If writing a block to offset 0, we assume you are writing the entire page rather than just bits
+    if (off==0) {
+        uint32_t* addr_u32aligned = (uint32_t*)(FLASH_CONFIG_BASE_ADDR);
+        uint32_t status=NRF_SUCCESS;
+        // Erase page
+        app_setFlashBusy();
+        do
+        {
+            status = sd_flash_page_erase(((uint32_t)addr_u32aligned)/1024);
+        } while (status == NRF_ERROR_BUSY);     // In case its still processing the previous write
+        while(app_isFlashBusy()) {
+            sd_app_evt_wait();
+        }
+        // Write block
+        app_setFlashBusy();
+        do
+        {
+            status = sd_flash_write(addr_u32aligned, (uint32_t*)buf, (len/4)+1);        // Write rounded up to nearest 32 bit length
+        } while (status == NRF_ERROR_BUSY);     // In case its still processing the previous write
+        while(app_isFlashBusy()) {
+            sd_app_evt_wait();
+        }
+        return true;
+    } else {
+        // Writing N bytes, worth the optimisation? TODO later
+        bool ret = true;
+        for(int i=0;i<len;i++) {
+            ret &= hal_bsp_nvmWrite8(off+i, *(buf+i));
+        }
+        return ret;
     }
-    return ret;
 }
 
 

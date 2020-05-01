@@ -41,14 +41,14 @@ static struct {
     bool isPasswordOK;              // Indicates if password has been validated or not
     bool flashWriteReq;
 } _ctx = {
-    .magic=MAGIC_CFG_SAVED,             
+    .magic=MAGIC_CFG_SAVED,             // So that if config updated and saved, the next reboot will find it        
     .advertisingInterval_ms = 300, 
     .txPowerLevel = -20,        // RADIO_TXPOWER_TXPOWER_Neg20dBm,  
     .major_value = 0xFFFF,
     .minor_value = 0xFFFF,
     .beacon_uuid_tab = {0xE2, 0xC5, 0x6D, 0xB5, 0xDF, 0xFB, 0x48, 0xD2, 0xB0, 0x60, 0xD0, 0xF5, 0xA7, 0x10, 0x96, 0xE0},
     .nameAdv = "W_FFFF_FFFF", 
-    .isConnectable=false,
+    .isConnectable=true,
     .company_id = 0x004C, 
     .extra_value = 0xC3,
     .passwordTab = {'0', '0', '0', '0'},
@@ -91,6 +91,7 @@ void cfg_writeCheck() {
     if (_ctx.flashWriteReq) {
         app_setFlashBusy();     // not sure if this works
         // Write entire structure
+        // TODO ADD PAGE ERASE ETC
         hal_bsp_nvmWrite(0, sizeof(_ctx), (uint8_t*)&_ctx);
     }
     _ctx.flashWriteReq = false;
