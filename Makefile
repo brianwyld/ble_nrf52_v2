@@ -74,7 +74,7 @@ ULDFLAGS = -Wl,-Map=$(OUTPUT_DIRFILE).map,-lm,-nostdlib
 # Release flags additional for ASM 
 # RASFLAGS =
 # Release flags additional for C 
-RCFLAGS  = -Os
+RCFLAGS  = -Os -DRELEASE_BUILD
 # RCFLAGS  += -fshort-enums
 # RCFLAGS  += -fpack-struct >>> build failed
 # RCFLAGS  = -O1 -g
@@ -87,7 +87,7 @@ RLDFLAGS =
 # Debug flags additional for ASM 
 DASFLAGS =
 # Debug flags additional for C 
-DCFLAGS  = -O0 -g3
+DCFLAGS  = -O0 -g3 -DDEBUG
 # Debug flags additional for linkage 
 DLDFLAGS = 
 

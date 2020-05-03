@@ -16,8 +16,8 @@
 #ifndef FW_MINOR 
 #define FW_MINOR (0)
 #endif
-#define DEVICE_NAME_BASE             "w"                                       /**< Name of device when for connection beacons. Will be included in the advertising data. */
-#define DEVICE_NAME_LEN             16      // w_0000_0000
+#define DEVICE_NAME_BASE             "Wyres"                                       /**< Name of device when for connection beacons. Will be included in the advertising data. */
+#define DEVICE_NAME_LEN             20      // Wyres_0000_0000
 #define PASSWORD_LEN    (4)
 #define MAGIC_CFG_SAVED (0x60671520)    // magic number meaning full saved config present in flash
 #define MAGIC_CFG_PROD (0x60671519)     // magic number meaning just production saved config present in flash
@@ -35,7 +35,8 @@ static struct {
     char nameAdv[DEVICE_NAME_LEN];
     uint8_t passwordTab[PASSWORD_LEN]; // Password
     uint8_t masterPasswordTab[PASSWORD_LEN]; // Password
-    uint8_t isConnectable;        // is it allowed to connect via GAP for config or uart pass-thru?
+    bool isConnectable;        // is it allowed to connect via GAP for config or uart pass-thru?
+    bool isIBeaconning;        // is it currently beaconning (in case of unexpected reset)
     int8_t txPowerLevel; // Default -4dBm
     uint8_t extra_value;    // usually related to tx power
     bool isPasswordOK;              // Indicates if password has been validated or not
@@ -47,8 +48,9 @@ static struct {
     .major_value = 0xFFFF,
     .minor_value = 0xFFFF,
     .beacon_uuid_tab = {0xE2, 0xC5, 0x6D, 0xB5, 0xDF, 0xFB, 0x48, 0xD2, 0xB0, 0x60, 0xD0, 0xF5, 0xA7, 0x10, 0x96, 0xE0},
-    .nameAdv = "W_FFFF_FFFF", 
-    .isConnectable=true,
+    .nameAdv = "Wyres_FFFF_FFFF", 
+    .isConnectable=false,
+    .isIBeaconning=false,
     .company_id = 0x004C, 
     .extra_value = 0xC3,
     .passwordTab = {'0', '0', '0', '0'},
@@ -144,7 +146,7 @@ int8_t cfg_getTXPOWER_Level( void )
     return _ctx.txPowerLevel;
 }
  
-void cfg_setConnectable(uint8_t value)
+void cfg_setConnectable(bool value)
 {
     if (value!=_ctx.isConnectable) {
         _ctx.isConnectable = value;
@@ -152,9 +154,21 @@ void cfg_setConnectable(uint8_t value)
     }
 }
  
-uint8_t cfg_getConnectable( void )
+bool cfg_getConnectable( void )
 {
     return _ctx.isConnectable;
+}
+
+bool cfg_isIBeaconning( void )
+{
+    return _ctx.isIBeaconning;
+}
+void cfg_setIsIBeaconning(bool value)
+{
+    if (value!=_ctx.isIBeaconning) {
+        _ctx.isIBeaconning = value;
+        configUpdateRequest();
+    }
 }
  
 void cfg_setMinor_Value(uint16_t value)
@@ -268,8 +282,12 @@ int cfg_getByKey(uint16_t key, uint8_t* vp, int maxlen) {
             return sizeof(int8_t);
         }
         case DCFG_KEY_CONNECTABLE: {
-            *vp = cfg_getConnectable();
-            return sizeof(uint8_t);
+            *((bool*)vp) = cfg_getConnectable();
+            return sizeof(bool);
+        }
+        case DCFG_KEY_IBEACONNING: {
+            *((bool*)vp) = cfg_isIBeaconning();
+            return sizeof(bool);
         }
         case DCFG_KEY_UUID: {
             int l = (maxlen<UUID128_SIZE ? maxlen : UUID128_SIZE);
@@ -309,8 +327,12 @@ int cfg_setByKey(uint16_t key, uint8_t* vp, int len) {
             return sizeof(int8_t);
         }
         case DCFG_KEY_CONNECTABLE: {
-            cfg_setConnectable(*vp);
-            return sizeof(uint8_t);
+            cfg_setConnectable(*((bool*)vp));
+            return sizeof(bool);
+        }
+        case DCFG_KEY_IBEACONNING: {
+            cfg_setIsIBeaconning(*((bool*)vp));
+            return sizeof(bool);
         }
         
         case DCFG_KEY_UUID: {
@@ -324,7 +346,7 @@ int cfg_setByKey(uint16_t key, uint8_t* vp, int len) {
 }
 int cfg_iterateKeys(void* odev, PK_CB_T pkcb) {
     static uint16_t KEYS[] = {DCFG_KEY_MAJOR, DCFG_KEY_MINOR, DCFG_KEY_ADV_INT, DCFG_KEY_TXPOW, 
-                        DCFG_KEY_UUID, DCFG_KEY_COMP_ID, DCFG_KEY_PASS, DCFG_KEY_CONNECTABLE};
+                        DCFG_KEY_UUID, DCFG_KEY_COMP_ID, DCFG_KEY_PASS, DCFG_KEY_CONNECTABLE, DCFG_KEY_IBEACONNING};
     uint8_t d[16];
     for(int i=0; i<(sizeof(KEYS)/sizeof(KEYS[0]));i++) {
         int l = cfg_getByKey(KEYS[i], &d[0], 16);

@@ -129,6 +129,10 @@ bool ibs_scan_stop()
     }
 }
 
+int ibs_scan_getTableSize() {
+    return _ctx.ibs_scan_result_index;
+}
+
 void ibs_handle_advert(ble_gap_evt_adv_report_t * p_adv_report) 
 {
     if (!_ctx.ibs_scan_active)
@@ -206,8 +210,12 @@ static void ibs_scan_add(uint8_t* data, int8_t rssi)
                 ib->meas_pow, ib->rssi,
                 data[IBS_IBEACON_UUID_OFFSET+14], data[IBS_IBEACON_UUID_OFFSET+15]);
     // And send to our preferred serial output
-    (*_ctx.output_tx_fn)((uint8_t*)line, strlen(line), NULL);
-    _ctx.ibs_scan_result_index++;
+    if ((*_ctx.output_tx_fn)((uint8_t*)line, strlen(line), NULL)==0) {
+        _ctx.ibs_scan_result_index++;
+    } else {
+        // Failed to send line (fifo probably full)
+        // Deal with it by NOT adding this guy to list (don't inc index), and hopefully we'll get him on his next advert
+    }
 }
 
 

@@ -36,8 +36,8 @@ extern "C" {
 #define UART0_RTS_PIN_NUMBER (RTS_PIN_NUMBER)
 #define UART0_CTS_PIN_NUMBER (CTS_PIN_NUMBER)
 
-#define UART_TX_BUF_SIZE        64                             /**< UART TX buffer size. */
-#define UART_RX_BUF_SIZE        64                             /**< UART RX buffer size. */
+#define UART_TX_BUF_SIZE        256                             /**< UART TX buffer size. MUST BE POWER OF 2 */
+#define UART_RX_BUF_SIZE        64                             /**< UART RX buffer size. MUST BE POWER OF 2 */
 
 bool hal_bsp_nvmLock();
 bool hal_bsp_nvmUnlock();
@@ -50,7 +50,7 @@ bool hal_bsp_nvmWrite16(uint16_t off, uint16_t v);
 bool hal_bsp_nvmWrite(uint16_t off, uint8_t len, uint8_t* buf);
 uint16_t hal_bsp_nvmSize();
 // Uart init
-bool hal_bsp_uart_init(int uartNb, int baudrate, app_uart_event_handler_t uart_event_handler);
+bool hal_bsp_uart_init(int uartNb, int baudrate_selector, app_uart_event_handler_t uart_event_handler);
 void hal_bsp_uart_deinit(int uartNb);
 // Tx line to uart. returns number of bytes not sent due to flow control
 int hal_bsp_uart_tx(int uartNb, uint8_t* d, int len);

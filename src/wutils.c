@@ -38,7 +38,7 @@ void wassert_fn(const char* file, int lnum) {
 }
 
 
-#define MAX_LOGSZ 100
+#define MAX_LOGSZ 80
     // Default log level depending on build (can be changed by app)
 #ifdef RELEASE_BUILD
 static uint8_t _logLevel = LOGS_RUN;

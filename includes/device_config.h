@@ -25,8 +25,10 @@ void cfg_setMajor_Value( uint16_t );
 void cfg_setMinor_Value( uint16_t );
 char* cfg_getAdvName();
 
-void cfg_setConnectable(uint8_t value);
-uint8_t cfg_getConnectable( void );
+void cfg_setConnectable(bool value);
+bool cfg_getConnectable( void );
+bool cfg_isIBeaconning( void );
+void cfg_setIsIBeaconning(bool value);
 void cfg_resetPasswordOk();
 bool cfg_isPasswordOk();
 bool cfg_checkPassword( char* given );
@@ -55,6 +57,7 @@ int cfg_iterateKeys(void* odev, PK_CB_T pkcb);
 #define DCFG_KEY_COMP_ID    (DCFG_KEY_BASE + 0x06)
 #define DCFG_KEY_PASS       (DCFG_KEY_BASE + 0x07)
 #define DCFG_KEY_CONNECTABLE (DCFG_KEY_BASE + 0x08)
+#define DCFG_KEY_IBEACONNING (DCFG_KEY_BASE + 0x09)
 
 //EOF
 #endif  /* H_DEVICE_CONFIG_H */

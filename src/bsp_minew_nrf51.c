@@ -24,7 +24,7 @@ static app_uart_comm_params_t _uart_comm_params[UART_CNT] =
         .cts_pin_no = UART0_CTS_PIN_NUMBER,
         .flow_control = APP_UART_FLOW_CONTROL_DISABLED,
         .use_parity = false,
-        .baud_rate = 115200,
+        .baud_rate = UART_BAUDRATE_BAUDRATE_Baud115200,     // NOTE : MUST USE SPECIFIC DEFINES AS ITS NOT JUST '115200'
     }
     };
 
@@ -32,12 +32,13 @@ static app_uart_comm_params_t _uart_comm_params[UART_CNT] =
 // On this module we define 2 UARTs:
 // - communication with external cards (AT command set processing) 
 // - debug logging
-bool hal_bsp_uart_init(int uartNb, int baudrate, app_uart_event_handler_t uart_event_handler) {
+// NOTE: baudrate is the define from nrf51_bitfields.h
+bool hal_bsp_uart_init(int uartNb, int baudrate_selector, app_uart_event_handler_t uart_event_handler) {
     uint32_t  err_code=0;
     if (uartNb<0 || uartNb>=UART_CNT) {
         return NULL;
     }
-    _uart_comm_params[uartNb].baud_rate = baudrate;
+    _uart_comm_params[uartNb].baud_rate = baudrate_selector;
     APP_UART_FIFO_INIT( (&_uart_comm_params[uartNb]),
                        UART_RX_BUF_SIZE,
                        UART_TX_BUF_SIZE,

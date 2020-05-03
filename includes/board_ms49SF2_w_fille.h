@@ -60,8 +60,8 @@ extern "C" {
 
 #define RX_PIN_NUMBER  16
 #define TX_PIN_NUMBER  15
-#define CTS_PIN_NUMBER -1
-#define RTS_PIN_NUMBER -1
+#define CTS_PIN_NUMBER UART_PIN_DISCONNECTED
+#define RTS_PIN_NUMBER UART_PIN_DISCONNECTED
 #define HWFC           false
 
 // Low frequency clock source to be used by the SoftDevice

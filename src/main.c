@@ -94,7 +94,6 @@ static struct app_context {
     uint16_t                m_conn_handle;    /**< Handle of the current GAP connection. */
     ble_db_discovery_t      m_ble_db_discovery;             /**< Instance of database discovery module. Must be passed to all db_discovert API calls */
     // config
-    bool isIBeaconning;         // should we be acting as ibeacon just now?
     uint8_t device_type;        // for ibeacon?
     uint8_t adv_data_length;
     ble_gap_adv_params_t m_adv_params;                                 /**< Parameters to be passed to the stack when starting advertising. */
@@ -103,7 +102,6 @@ static struct app_context {
     bool resetRequested;
 } _ctx = {
     .m_conn_handle = BLE_CONN_HANDLE_INVALID, 
-    .isIBeaconning=false,
     .adv_data_length = 0x15,
     .device_type = 0x02,
 };
@@ -192,13 +190,13 @@ static void services_init(void)
 static void on_conn_params_evt(ble_conn_params_evt_t * p_evt)
 {
     uint32_t err_code;
- 
+    log_info("evt:conn params evt %d", p_evt->evt_type);
+
     if (p_evt->evt_type == BLE_CONN_PARAMS_EVT_FAILED)
     {
         err_code = sd_ble_gap_disconnect(_ctx.m_conn_handle, BLE_HCI_CONN_INTERVAL_UNACCEPTABLE);
         APP_ERROR_CHECK(err_code);
-        err_code = advertising_check_start();
-        APP_ERROR_CHECK(err_code);
+        advertising_check_start();
     }
 }
 
@@ -244,7 +242,8 @@ static void conn_params_init(void)
 static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
 {
     uint32_t err_code;
- 
+    log_info("evt:advertsing evt %d", ble_adv_evt);
+
     switch (ble_adv_evt)
     {
         case BLE_ADV_EVT_FAST:
@@ -282,6 +281,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
     switch (p_ble_evt->header.evt_id)
     {
         case BLE_GAP_EVT_CONNECTED:
+            log_info("evt:gap connect");
             err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
             APP_ERROR_CHECK(err_code);
             _ctx.m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
@@ -290,23 +290,26 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
         break; // BLE_GAP_EVT_CONNECTED
  
         case BLE_GAP_EVT_DISCONNECTED:
+            log_info("evt:gap disconnect");
             err_code = bsp_indication_set(BSP_INDICATE_IDLE);
             APP_ERROR_CHECK(err_code);
             _ctx.m_conn_handle = BLE_CONN_HANDLE_INVALID;
             // Restart advertising if required
-            err_code = advertising_check_start();
-            APP_ERROR_CHECK(err_code);
+            advertising_check_start();
         break; // BLE_GAP_EVT_DISCONNECTED
         
         case BLE_GAP_EVT_ADV_REPORT: {
+            log_info("evt:adv rx");
+
             // Reception of an advert - could be an ibeacon
             ble_gap_evt_adv_report_t *p_adv_report = &p_gap_evt->params.adv_report;
             ibs_handle_advert(p_adv_report);
         break; // BLE_GAP_EVT_ADV_REPORT
         }
         case BLE_GAP_EVT_TIMEOUT:
-            err_code = advertising_check_start();
-            APP_ERROR_CHECK(err_code);
+            log_info("evt:gap timeout");
+
+            advertising_check_start();
             
             if (p_gap_evt->params.timeout.src == BLE_GAP_TIMEOUT_SRC_SCAN)
             {
@@ -331,21 +334,21 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
         break; // BLE_GATTS_EVT_SYS_ATTR_MISSING
  
         case BLE_GATTC_EVT_TIMEOUT:
+            log_info("evt:gattc timeout");
             // Disconnect on GATT Client timeout event.
             err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gattc_evt.conn_handle,
                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
             APP_ERROR_CHECK(err_code);
-            err_code = advertising_check_start();
-            APP_ERROR_CHECK(err_code);
+            advertising_check_start();
         break; // BLE_GATTC_EVT_TIMEOUT
  
         case BLE_GATTS_EVT_TIMEOUT:
+            log_info("evt:gatts timeout");
             // Disconnect on GATT Server timeout event.
             err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gatts_evt.conn_handle,
                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
             APP_ERROR_CHECK(err_code);
-            err_code = advertising_check_start();
-            APP_ERROR_CHECK(err_code);
+            advertising_check_start();
         break; // BLE_GATTS_EVT_TIMEOUT
  
         case BLE_EVT_USER_MEM_REQUEST:
@@ -410,6 +413,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
  */
 static void db_discovery_handler(ble_db_discovery_evt_t * p_evt)
 {
+    log_info("discover event %d", p_evt->evt_type);
     comm_ble_discovery_dispatch(p_evt);
 //    comm_ble_disconnect_client(); TODO Not sure where the disconnect for the BLE NUS GATT service should be
 }
@@ -719,15 +723,17 @@ static bool advertising_check_start()
 
     advertising_setup();
     // only advertise if we want to be connectable, or we are ibeaconning, and we are NOT scanning
-    if ((cfg_getConnectable()!=0 || _ctx.isIBeaconning)) // && ibs_is_scan_active()==false)
+    if ((cfg_getConnectable() || ibb_isBeaconning())) // && ibs_is_scan_active()==false)
     {
-        err_code = ble_advertising_start(_ctx.isIBeaconning?BLE_ADV_MODE_FAST:BLE_ADV_EVT_SLOW);
+        err_code = ble_advertising_start(ibb_isBeaconning()?BLE_ADV_MODE_FAST:BLE_ADV_EVT_SLOW);
         APP_ERROR_CHECK(err_code);
+        log_info("adv start : connectable [%s] beaconning : %s", cfg_getAdvName(), ibb_isBeaconning()?"yes":"no");
         return true;
     } else {
         //idle the adverts
         err_code = ble_advertising_start(BLE_ADV_MODE_IDLE);
         APP_ERROR_CHECK(err_code);
+        log_info("adv start : no beaconning");
         return false;
     }
 }
@@ -806,15 +812,15 @@ static void ble_init(void) {
 
 // Control of beaconning activity
 bool ibb_isBeaconning() {
-    return _ctx.isIBeaconning;
+    return (cfg_isIBeaconning());
 }
 
 void ibb_start() {
-    _ctx.isIBeaconning=true;
+    cfg_setIsIBeaconning(true);
     advertising_check_start();
 }
 void ibb_stop() {
-    _ctx.isIBeaconning=false;
+    cfg_setIsIBeaconning(false);
     advertising_check_start();
 }
 
@@ -865,6 +871,68 @@ int main(void)
         {
             power_manage();
         }
-        comm_uart_tx((uint8_t *)"*",1, NULL);
     }
 }
+
+#ifdef UART_DBG
+static void uart_event_handler(app_uart_evt_t * p_event)
+{    
+    switch (p_event->evt_type)
+    {
+        case APP_UART_DATA_READY:
+        {
+            // Read all the bytes we can 
+            uint8_t c;
+            while(app_uart_get(&c)==NRF_SUCCESS) 
+            {
+                app_uart_put(&c);
+            }
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+// UARTs config
+static app_uart_comm_params_t _uart_comm_params =
+    {
+        .rx_pin_no = 3, // RX_PIN_NUMBER A
+        .tx_pin_no = 4, // TX_PIN_NUMBER A
+        .rts_pin_no = -1,
+        .cts_pin_no = -1,
+        .flow_control = APP_UART_FLOW_CONTROL_DISABLED,
+        .use_parity = false,
+        .baud_rate = UART_BAUDRATE_BAUDRATE_Baud115200,
+    };
+int uart_tx(char* line) {
+    int len = strlen(line);
+    for(int i=0;i<len;i++) {
+        // nrf uart api only allows one uart, sorry
+        if (app_uart_put((uint8_t)(line[i]))!=NRF_SUCCESS) {
+            return (len-i);       // Number of bytes not txd
+        }
+    }
+}
+int main(void)
+{
+    system_init();
+
+    uint32_t  err_code=0;
+    APP_UART_FIFO_INIT( (&_uart_comm_params),
+                       UART_RX_BUF_SIZE,
+                       UART_TX_BUF_SIZE,
+                       uart_event_handler,
+                       APP_IRQ_PRIORITY_LOW,
+                       err_code);
+    APP_ERROR_CHECK(err_code);
+
+    // Tell host we are ready to rock
+    uart_tx("READY\r\n");
+    for (;;)
+    {        
+//        power_manage();
+        uart_tx("*");
+    }
+}
+#endif

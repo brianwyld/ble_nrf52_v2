@@ -15,8 +15,8 @@
 #include "at_process.h"
 
 #define COMM_UART_NB    (0)
-#define COMM_UART_BAUDRATE  (115200)
-#define MAX_RX_LINE (100)
+#define COMM_UART_BAUDRATE  (UART_BAUDRATE_BAUDRATE_Baud115200)     // MUST USE THE CONSTANT NOT A SIMPLE VALUE
+#define MAX_RX_LINE (60)
 
 static struct {
     int uartNb;

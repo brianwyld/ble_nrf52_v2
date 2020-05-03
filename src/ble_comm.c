@@ -16,7 +16,7 @@
 #include "at_process.h"
 #include "comm_ble.h"
 
-#define MAX_RX_LINE (100)
+#define MAX_RX_LINE (60)
 
 static struct {
     bool connected;
@@ -53,18 +53,24 @@ bool comm_ble_init(void) {
     return true;
 }
 
-void comm_ble_connect_client() {
+// Remote connect
+void comm_ble_remote_connected() {
+    log_info("nus:connect");
     _ctx.connected = true;
     _ctx.rx_index = 0;      // just in case
 }
-void comm_ble_discovery_dispatch(ble_db_discovery_evt_t * p_evt) {
-/* not doing nuc_c currently
-    if (p_evt!=NULL) {
-        ble_nus_c_on_db_disc_evt(&_ctx.m_nus_c, p_evt);
-    }
-    */
+// NUS tells us we have been disconnected
+void comm_ble_remote_disconnected(void) {
+    log_info("nus:remote disconnect");
+    // Tell at cmd processor by sending disc at command
+    at_process_input("AT+DISC", &comm_ble_tx);
+    _ctx.connected = false;
+    _ctx.tx_ready_fn = NULL;
+    _ctx.rx_index = 0;
 }
-void comm_ble_disconnect_client() {
+// Our end wants to disconnect
+void comm_ble_local_disconnected(void) {
+    log_info("nus:local disconnect");
     // Seems a little brutual to break its connection but there you go?
     if (_ctx.m_nus.conn_handle!=BLE_CONN_HANDLE_INVALID) {
         uint32_t err_code = sd_ble_gap_disconnect(_ctx.m_nus.conn_handle,
@@ -75,9 +81,6 @@ void comm_ble_disconnect_client() {
         }
    }
     _ctx.m_nus.conn_handle=BLE_CONN_HANDLE_INVALID;
-
-    // Tell at cmd processor by sending disc at command
-    at_process_input("AT+DISC", &comm_ble_tx);
     _ctx.connected = false;
     _ctx.tx_ready_fn = NULL;
     _ctx.rx_index = 0;
@@ -91,19 +94,30 @@ int comm_ble_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
     _ctx.tx_ready_fn = tx_ready;        // in case of..
     // check if disconnecting and ignore (as can't disconnect from uart...)
     if (data!=NULL)  {
+        log_info("nus:send data to nus");
         // Send to NUS : TODO do we need to cut it up into BLE_NUS_MAX_DATA_LEN sized blocks?
         uint32_t err_code = ble_nus_string_send(&_ctx.m_nus, data, len);
 //        err_code = ble_nus_c_string_send(&_ctx.m_nus_c, data, len);
         if (err_code == NRF_ERROR_INVALID_STATE) {
-            _ctx.connected = false;
+            // NUS tells us we are disconnected
+            comm_ble_remote_disconnected();
         } else {
             APP_ERROR_CHECK(err_code);
         }
     } else {
+        log_info("nus:disconnect request");
         // disconnnect NUS
-        comm_ble_disconnect_client();
+        comm_ble_local_disconnected();
     }
     return 0;       // all sent
+}
+
+void comm_ble_discovery_dispatch(ble_db_discovery_evt_t * p_evt) {
+/* not doing nuc_c currently
+    if (p_evt!=NULL) {
+        ble_nus_c_on_db_disc_evt(&_ctx.m_nus_c, p_evt);
+    }
+    */
 }
 
 void comm_ble_dispatch(ble_evt_t * p_ble_evt) {
@@ -123,6 +137,11 @@ void comm_ble_dispatch(ble_evt_t * p_ble_evt) {
 /**@snippet [Handling the data received over BLE] */
 static void comm_ble_nus_data_handler(ble_nus_t * p_nus, uint8_t* p_data, uint16_t length)
 {
+    // RX data -> must be connected - process this event if not already so
+    if (_ctx.connected==false) {
+        comm_ble_remote_connected();
+    }
+    log_info("nus:rx data");
     for(int i=0;i<length;i++) {
         _ctx.rx_buf[_ctx.rx_index] = p_data[i];
         if( (_ctx.rx_buf[_ctx.rx_index] == '\r') || (_ctx.rx_buf[_ctx.rx_index] == '\n') || (_ctx.rx_index >= (MAX_RX_LINE-1)) )

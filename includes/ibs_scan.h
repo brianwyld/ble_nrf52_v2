@@ -28,4 +28,5 @@ bool ibs_scan_restart(void);
 bool ibs_scan_stop(void);
 void ibs_scan_set_uuid_filter(uint8_t* uuid);
 void ibs_handle_advert(ble_gap_evt_adv_report_t *p_adv_report);
+int ibs_scan_getTableSize();
 #endif

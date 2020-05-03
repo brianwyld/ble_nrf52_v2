@@ -23,8 +23,8 @@
 #include "at_process.h"
 #include "comm_uart.h"
 
-#define MAX_TXSZ (200)
-#define MAX_RXSZ (200)
+#define MAX_TXSZ (100)
+#define MAX_ARGS (8)
 
 // per at command we have a definiton:
 typedef enum { ATCMD_OK, ATCMD_GENERR, ATCMD_BADARG } ATRESULT;
@@ -129,12 +129,13 @@ void at_process_input(char* data, UART_TX_FN_T source_txfn) {
 //Process an input line terminated by \0, and write any output back to the given tx fn
 static void at_process_line(char* line, UART_TX_FN_T utx_fn) {
     // parse line into : command, args
-    char* els[5];
+    char* els[MAX_ARGS];
     char* s = line;
     int elsi = 0;
     // first segment
     els[elsi++] = s;
-    while (*s!=0 && elsi<5) {
+    // Process input until end of string, newlone or got max allow args
+    while (*s!=0 && elsi<MAX_ARGS) {
         // Separators on line are space, = and , (so can accept "AT+X P1 P1", "AT+X=P1 P2" and "AT+X=P1,P2, P3" etc )
         if (*s==' ' || *s=='=' || *s==',') {
             // make end of string at white space
@@ -148,6 +149,9 @@ static void at_process_line(char* line, UART_TX_FN_T utx_fn) {
             if (*s!='\0') {
                 els[elsi++] = s;
             } // else leave it on the end of string as we're done
+        } else if (*s=='\r' || *s=='\n') {
+            *s='\0';
+            break;      // end of processing for this line
         } else {
             s++;
         }
@@ -156,11 +160,11 @@ static void at_process_line(char* line, UART_TX_FN_T utx_fn) {
     for(int i=0;i<_ctx.ncmds;i++) {
         if (strcmp(els[0], _ctx.cmds[i].cmd)==0) {
             // gotcha
-            log_debug("got cmd %s with %d args", els[0], elsi-1);
+//            log_debug("got cmd %s with %d args", els[0], elsi-1);
             // call the specific command processor function as registered
             if ((*_ctx.cmds[i].fn)(elsi, els, utx_fn)!=ATCMD_OK) {
                 // error message : should be determined by return
-                wconsole_println(utx_fn, "ERROR\r\n Bad args for %s : %s", _ctx.cmds[i].cmd, _ctx.cmds[i].desc);
+                wconsole_println(utx_fn, "ERROR\r\nBad args for %s : %s", _ctx.cmds[i].cmd, _ctx.cmds[i].desc);
             } else {
                 wconsole_println(utx_fn, "OK");
             }
@@ -168,8 +172,8 @@ static void at_process_line(char* line, UART_TX_FN_T utx_fn) {
         }
     }
     // not found
-    wconsole_println(utx_fn, "ERROR\r\n Unknown command [%s].", els[0]);
-    log_debug("no cmd %s with %d args", els[0], elsi-1);
+    wconsole_println(utx_fn, "ERROR\r\nUnknown command [%s].", els[0]);
+//    log_debug("no cmd %s with %d args", els[0], elsi-1);
 }
 
 // internals
@@ -203,7 +207,9 @@ static ATRESULT atcmd_reset(uint8_t nargs, char* argv[], void* odev) {
 
 static ATRESULT atcmd_info(uint8_t nargs, char* argv[], void* odev) {
     wconsole_println(odev, "Wyres BLE firmware v%d.%d", cfg_getFWMajor(), cfg_getFWMinor());
+    wconsole_println(odev, "id:%04x:%04x (%d:%d) name [%s]", cfg_getMajor_Value(), cfg_getMinor_Value(),cfg_getMajor_Value(), cfg_getMinor_Value(), cfg_getAdvName());
     wconsole_println(odev, "Scanning: %s, Beaconning: %s", (ibs_is_scan_active()?"YES":"NO"), (ibb_isBeaconning()?"YES":"NO"));
+    wconsole_println(odev, "scan table size [%d]", ibs_scan_getTableSize());
     return ATCMD_OK;
 }
 
@@ -561,7 +567,7 @@ static bool wconsole_println(void* dev, const char* l, ...) {
     }
     if (utx_fn!=NULL) {
         int res = (*utx_fn)(&_ctx.txbuf[0], len, NULL);
-        if (res<len) {
+        if (res!=0) {       // Error or flow control
             _ctx.txbuf[0] = '*';
             (*utx_fn)(&_ctx.txbuf[0], 1, NULL);      // so user knows he missed something.
             ret = false;        // caller knows there was an issue

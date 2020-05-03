@@ -30,8 +30,7 @@ enum LOGS_LEVEL { LOGS_DEBUG, LOGS_INFO, LOGS_RUN, LOGS_OFF };
 // removes asserts everywhere (including mynewt etc), and these asserts are generally
 // not just 'test/debug' cases, but also 'badness reboot recovery' cases... 
 
-//#define RELEASE_BUILD (1)
-
+// RELEASE_BUILD set in makefile
 // Release code therefore just removes debug logs and other debug/test code surrounded by #ifndef RELEASE_BUILD/#endif
 #ifdef RELEASE_BUILD 
 
