@@ -162,17 +162,20 @@ static void at_process_line(char* line, UART_TX_FN_T utx_fn) {
             // gotcha
 //            log_debug("got cmd %s with %d args", els[0], elsi-1);
             // call the specific command processor function as registered
-            if ((*_ctx.cmds[i].fn)(elsi, els, utx_fn)!=ATCMD_OK) {
-                // error message : should be determined by return
-                wconsole_println(utx_fn, "ERROR\r\nBad args for %s : %s", _ctx.cmds[i].cmd, _ctx.cmds[i].desc);
-            } else {
+            ATRESULT ret = (*_ctx.cmds[i].fn)(elsi, els, utx_fn);
+            // generic processing of return for OK and GENERR, other cases the cmd processing sent the return
+            if (ret==ATCMD_OK) {
                 wconsole_println(utx_fn, "OK");
+            } else if (ret==ATCMD_GENERR) {
+                wconsole_println(utx_fn, "ERROR");
+//                wconsole_println(utx_fn, "Bad args for %s : %s", _ctx.cmds[i].cmd, _ctx.cmds[i].desc);
             }
             return;
         }
     }
     // not found
-    wconsole_println(utx_fn, "ERROR\r\nUnknown command [%s].", els[0]);
+    wconsole_println(utx_fn, "ERROR");
+    wconsole_println(utx_fn, "Unknown command [%s].", els[0]);
 //    log_debug("no cmd %s with %d args", els[0], elsi-1);
 }
 
@@ -271,6 +274,7 @@ static ATRESULT atcmd_getcfg(uint8_t nargs, char* argv[], void* odev) {
         int kl = strlen(argv[1]);
         if (kl==4) {
             if (sscanf(argv[1], "%4x", &k)<1) {
+                wconsole_println(odev, "ERROR");
                 wconsole_println(odev, "Bad key [%s] must be 4 hex digits", argv[1]);
                 return ATCMD_BADARG;
             } else {
@@ -279,7 +283,8 @@ static ATRESULT atcmd_getcfg(uint8_t nargs, char* argv[], void* odev) {
                 printKey(odev, k, &d[0], l);
             }
         } else {
-            wconsole_println(odev, "Error : Must give key of 4 digits");
+            wconsole_println(odev, "ERROR");
+            wconsole_println(odev, "Must give key of 4 digits");
             return ATCMD_BADARG;
         }
     }
@@ -388,7 +393,8 @@ static ATRESULT atcmd_connect(uint8_t nargs, char* argv[], void* odev) {
         // Setting these 2 attributes will mean that the pass-thru handling takes place in the at_process_line() method
         wconsole_println(odev, "OK");
     } else {
-        wconsole_println(odev, "NOK : not yet implemented");
+        wconsole_println(odev, "ERROR");
+        wconsole_println(odev, "Not yet implemented");
     }
     return ATCMD_OK;
 }
@@ -406,12 +412,14 @@ static ATRESULT atcmd_disconnect(uint8_t nargs, char* argv[], void* odev) {
         _ctx.passThru_txfn2 = NULL;
         wconsole_println(odev, "OK");
     } else {
-        wconsole_println(odev, "NOK : Not connected");
+        wconsole_println(odev, "ERROR");
+        wconsole_println(odev, "Not connected");
     }
 //    sd_ble_gap_disconnect(m_conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
     return ATCMD_OK;
 }
 
+// AT+PASS,V,<password> or AT+PASS,S,<newpassword> (must already have had a password 'V' ok)
 static ATRESULT atcmd_password(uint8_t nargs, char* argv[], void* odev) {
     if (nargs==2) {
         // Check password
@@ -419,9 +427,15 @@ static ATRESULT atcmd_password(uint8_t nargs, char* argv[], void* odev) {
             return ATCMD_OK;
         }
     } else if (nargs==3) {
-        // set password (with old one first)
-        if (cfg_setPassword(argv[1], argv[2])) {
-            return ATCMD_OK;
+        if (strcmp("V", argv[1])==0) {
+            if (cfg_checkPassword(argv[2])) {
+                return ATCMD_OK;
+            }
+        } else if (strcmp("S", argv[1])==0) {
+            // set password if already logged in (old pass is passed as NULL)
+            if (cfg_setPassword(NULL, argv[2])) {
+                return ATCMD_OK;
+            }
         }
     }
     // Else not
@@ -443,7 +457,8 @@ static ATRESULT atcmd_start_scan(uint8_t nargs, char* argv[], void* odev) {
 //                    &uuid[8],&uuid[9],&uuid[10],&uuid[11],&uuid[12],&uuid[13],&uuid[14],&uuid[15])!=16) 
         {
             // oops
-            wconsole_println(odev, "ERROR : failed to parse UUID [%s]", argv[1]);
+            wconsole_println(odev, "ERROR");
+            wconsole_println(odev, "Failed to parse UUID [%s]", argv[1]);
             return ATCMD_BADARG;
         }
         
@@ -486,32 +501,38 @@ static ATRESULT atcmd_start_ib(uint8_t nargs, char* argv[], void* odev) {
 //                    &uuid[8],&uuid[9],&uuid[10],&uuid[11],&uuid[12],&uuid[13],&uuid[14],&uuid[15])!=16) 
         {
             // oops
+            wconsole_println(odev, "ERROR");
             wconsole_println(odev, "ERROR : failed to parse UUID [%s]", argv[1]);
             return ATCMD_BADARG;
         }
         if (sscanf(argv[2], "%04x", &major)!=1) 
         {
+            wconsole_println(odev, "ERROR");
             wconsole_println(odev, "ERROR : failed to parse major[%s]", argv[2]);
             return ATCMD_BADARG;
         }
         if (sscanf(argv[3], "%04x", &minor)!=1) 
         {
-            wconsole_println(odev, "ERROR : failed to parse minor[%s]", argv[3]);
+            wconsole_println(odev, "ERROR");
+            wconsole_println(odev, "Failed to parse minor[%s]", argv[3]);
             return ATCMD_BADARG;
         }
         if (sscanf(argv[4], "%02x", &extra)!=1) 
         {
-            wconsole_println(odev, "ERROR : failed to parse extra[%s]", argv[4]);
+            wconsole_println(odev, "ERROR");
+            wconsole_println(odev, "Failed to parse extra[%s]", argv[4]);
             return ATCMD_BADARG;
         }
         if (sscanf(argv[5], "%04x", &interMS)!=1) 
         {
-            wconsole_println(odev, "ERROR : failed to parse interval[%s]", argv[5]);
+            wconsole_println(odev, "ERROR");
+            wconsole_println(odev, "Failed to parse interval[%s]", argv[5]);
             return ATCMD_BADARG;
         }
         if (sscanf(argv[6], "%d", &txpower)!=1) 
         {
-            wconsole_println(odev, "ERROR : failed to parse tx power[%s]", argv[6]);
+            wconsole_println(odev, "ERROR");
+            wconsole_println(odev, "Failed to parse tx power[%s]", argv[6]);
             return ATCMD_BADARG;
         }
         cfg_setUUID(uuid);

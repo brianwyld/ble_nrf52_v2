@@ -213,6 +213,9 @@ bool cfg_isPasswordOk() {
 } 
 bool cfg_checkPassword( char* given )
 {
+    if (given==NULL) {
+        return false;
+    }
     for(int i=0;i<PASSWORD_LEN;i++) {
         if (_ctx.passwordTab[i]!=given[i]) {
             _isPasswordOK = false;
@@ -224,7 +227,10 @@ bool cfg_checkPassword( char* given )
 }
 bool cfg_setPassword(char* oldp, char* newp) 
 {
-    if (cfg_checkPassword(oldp)) {
+    if (newp==NULL) {
+        return false;
+    }
+    if (cfg_isPasswordOk() || cfg_checkPassword(oldp)) {
         for(int i=0;i<PASSWORD_LEN;i++) {
             _ctx.passwordTab[i]=newp[i];
         }

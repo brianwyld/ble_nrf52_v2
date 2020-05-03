@@ -95,7 +95,11 @@ int comm_ble_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
     // check if disconnecting and ignore (as can't disconnect from uart...)
     if (data!=NULL)  {
         log_info("nus:send data to nus");
-        // Send to NUS : TODO do we need to cut it up into BLE_NUS_MAX_DATA_LEN sized blocks?
+        // Send to NUS : TODO do we need to cut it up into BLE_NUS_MAX_DATA_LEN sized blocks? just chop it off for now
+        if (len>BLE_NUS_MAX_DATA_LEN) {
+            data[BLE_NUS_MAX_DATA_LEN]='\0';
+            len = BLE_NUS_MAX_DATA_LEN;
+        }
         uint32_t err_code = ble_nus_string_send(&_ctx.m_nus, data, len);
 //        err_code = ble_nus_c_string_send(&_ctx.m_nus_c, data, len);
         if (err_code == NRF_ERROR_INVALID_STATE) {
