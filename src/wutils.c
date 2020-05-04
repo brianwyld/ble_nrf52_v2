@@ -21,6 +21,8 @@
 
 #include "wutils.h"
 #include "bsp_minew_nrf51.h"
+#include "main.h"
+#include "comm_uart.h"
 
 // assert gets stack to determine address of line that called it to dump in log
 // also write stack into prom for reboot analysis
@@ -34,7 +36,7 @@ void wassert_fn(const char* file, int lnum) {
 //    assert_caller = __builtin_extract_return_addr(__builtin_return_address(0));
 //    log_blocking_fn(0,"assert from [%8x] see APP.elf.lst", assert_caller);
     // reboot
-    app_error_handler(0x60691519, lnum, file);
+    app_error_handler(0x60691519, lnum, (const uint8_t*)file);
 }
 
 
@@ -45,10 +47,12 @@ static uint8_t _logLevel = LOGS_RUN;
 #else /* RELEASE_BUILD */
 static uint8_t _logLevel = LOGS_DEBUG;
 #endif /* RELEASE_BUILD */
+#define LOG_UART_BAUDRATE  (UART_BAUDRATE_BAUDRATE_Baud115200)     // MUST USE THE CONSTANT NOT A SIMPLE VALUE
 
 // Must be static buffer NOT ON STACK
 static char _buf[MAX_LOGSZ];
 static int _uartDev = -1;
+static bool log_check_uart();
 
 // note the doout is to allow to break here in debugger and see the log, without actually accessing UART
 static void do_log(char lev, const char* ls, va_list vl) {
@@ -68,20 +72,19 @@ static void do_log(char lev, const char* ls, va_list vl) {
     _buf[len+1]='\r';
     _buf[len+2]='\0';
     len+=3;
-    if (_uartDev>=0) {
-        // Ensure its open (no effect if already open)
-        if (log_init_uart()==0) {
-            int res = hal_bsp_uart_tx(_uartDev, (uint8_t*)(&_buf[0]), len);
+    // Ensure its open (no effect if already open)
+    if (log_check_uart()) {
+        int res = comm_uart_tx((uint8_t*)(&_buf[0]), len, NULL);
+        if (res!=0) {
             if (res<0) {
+                // uart closed, too bad
+            } else {
                 _buf[0] = '*';
-                hal_bsp_uart_tx(_uartDev, (uint8_t*)(&_buf[0]), 1);      // so user knows he missed something.
-                // Not actually a lot we can do about this especially if its a flow control (SKT_NOSPACE) condition - ignore it
-               log_noout_fn("log FAIL[%s]", _buf);      // just for debugger to watch
-            }        
-        } else {
-            log_noout_fn("log init FAIL[%s]", _buf);      // just for debugger to watch
-        }
-   }
+                comm_uart_tx((uint8_t*)(&_buf[0]), 1, NULL);      // so user knows he missed something.
+            }
+            // Not actually a lot we can do about this especially if its a flow control (SKT_NOSPACE) condition - ignore it
+        }        
+    }
 }
 uint8_t get_log_level() {
     return _logLevel;
@@ -106,14 +109,17 @@ void set_log_level(uint8_t l) {
     _logLevel = l;
 }
 
-/* configure uart device for logging */
-void log_config_uart(int dev) {
-    _uartDev = dev;
+/* check open/init UART for logging */
+bool log_init_uart() {
+    // Using comm uart so no init to do
+    return true;
 }
-/* open/init UART for logging */
-int log_init_uart() {
-    // TODO
-    return 0;
+static bool log_check_uart() {
+    if (_uartDev==0) {
+        // using comm_uart channel as only 1 uart... it should already be inited...
+        return true;
+    }
+    return false;
 }
 // close output uart for logs
 void log_deinit_uart() {
@@ -169,15 +175,8 @@ void log_noout_fn(const char* ls, ...) {
 
 // Called from sysinit once uarts etc are up
 void wlog_init(int uartNb) {
-    bool res = true;
-    // no console
-    // If specific device for logging, create its wskt driver driver
-    // Not available on nRF    UART* u=uart_line_comm_create("uart2", 115200);
-    assert(res);
-    // And tell logging to use it whenrequired
-    log_config_uart(uartNb);  
-    res=(log_init_uart()==0);    // kick it off
-    assert(res);
+    // And tell logging to use it when required
+    _uartDev = uartNb;
 }
 
 // More utility functions

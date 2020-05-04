@@ -66,7 +66,7 @@ enum LOGS_LEVEL { LOGS_DEBUG, LOGS_INFO, LOGS_RUN, LOGS_OFF };
 void wassert_fn(const char* file, int lnum);
 // logging
 void wlog_init(int uartNb);
-int log_init_uart();
+bool log_init_uart();
 void log_deinit_uart();
 bool log_check_uart_active();
 void log_debug_fn(const char* sl, ...);

@@ -13,7 +13,7 @@
 #define UUID128_SIZE            16                              /**< Size of 128 bit UUID */
 
 // Callback when output sink can take tx again (if flow controlled)
-typedef int (*UART_TX_READY_FN_T)();
+typedef int (*UART_TX_READY_FN_T)(void* txfn);
 // Output line with N characters (may be null terminated or not)
 typedef int (*UART_TX_FN_T)(uint8_t* output, int len, UART_TX_READY_FN_T txready);
 

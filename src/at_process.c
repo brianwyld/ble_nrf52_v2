@@ -203,16 +203,33 @@ static ATRESULT atcmd_who(uint8_t nargs, char* argv[], void* odev) {
     return ATCMD_OK;
 }
 
+static ATRESULT atcmd_push(uint8_t nargs, char* argv[], void* odev) {
+    // always in push mode anyway
+    return ATCMD_OK;
+}
+static ATRESULT atcmd_type(uint8_t nargs, char* argv[], void* odev) {
+    // If type set to scanner, then stop ibeaconning and vice-versa
+    if (nargs==2) {
+        if (strcmp(argv[1], TYPE_SCANNER)==0) {
+            ibb_stop();
+        }
+        if (strcmp(argv[1], TYPE_IBEACON)==0) {
+            ibs_scan_stop();
+        }
+    }
+    return ATCMD_OK;
+}
+
 static ATRESULT atcmd_reset(uint8_t nargs, char* argv[], void* odev) {
     app_reset_request();
     return ATCMD_OK;
 }
 
 static ATRESULT atcmd_info(uint8_t nargs, char* argv[], void* odev) {
-    wconsole_println(odev, "Wyres BLE firmware v%d.%d", cfg_getFWMajor(), cfg_getFWMinor());
+    wconsole_println(odev, "Wyres BLE v%d.%d", cfg_getFWMajor(), cfg_getFWMinor());
     wconsole_println(odev, "id:%04x:%04x (%d:%d) name [%s]", cfg_getMajor_Value(), cfg_getMinor_Value(),cfg_getMajor_Value(), cfg_getMinor_Value(), cfg_getAdvName());
-    wconsole_println(odev, "Scanning: %s, Beaconning: %s", (ibs_is_scan_active()?"YES":"NO"), (ibb_isBeaconning()?"YES":"NO"));
-    wconsole_println(odev, "scan table size [%d]", ibs_scan_getTableSize());
+    wconsole_println(odev, "Scan: %s, Beacon: %s", (ibs_is_scan_active()?"YES":"NO"), (ibb_isBeaconning()?"YES":"NO"));
+    wconsole_println(odev, "nbIBs[%d]", ibs_scan_getTableSize());
     return ATCMD_OK;
 }
 
@@ -386,6 +403,11 @@ static ATRESULT atcmd_setcfg(uint8_t nargs, char* argv[], void* odev) {
 // This may be from the BLE uart service, to the UART port (classic) if no params are given
 // or from uart to a remote BLE client (if relevant addresses given) : TODO
 static ATRESULT atcmd_connect(uint8_t nargs, char* argv[], void* odev) {
+        // Must have done a password login to be allowed to connect
+    if (!cfg_isPasswordOk()) {
+        return ATCMD_GENERR;
+    }
+
     if (nargs==1) {
         // the sender is one side (assumed to be a remote BLE) and the comm UART is forced as the other side
         _ctx.passThru_txfn1 = (UART_TX_FN_T)odev;
@@ -548,23 +570,6 @@ static ATRESULT atcmd_start_ib(uint8_t nargs, char* argv[], void* odev) {
 
 static ATRESULT atcmd_stop_ib(uint8_t nargs, char* argv[], void* odev) {
     ibb_stop();
-    return ATCMD_OK;
-}
-
-static ATRESULT atcmd_push(uint8_t nargs, char* argv[], void* odev) {
-    // always in push mode anyway
-    return ATCMD_OK;
-}
-static ATRESULT atcmd_type(uint8_t nargs, char* argv[], void* odev) {
-    // If type set to scanner, then stop ibeaconning and vice-versa
-    if (nargs==2) {
-        if (strcmp(argv[1], TYPE_SCANNER)==0) {
-            ibb_stop();
-        }
-        if (strcmp(argv[1], TYPE_IBEACON)==0) {
-            ibs_scan_stop();
-        }
-    }
     return ATCMD_OK;
 }
 

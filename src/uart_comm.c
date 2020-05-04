@@ -20,6 +20,7 @@
 
 static struct {
     int uartNb;
+    bool isOpen;
     uint8_t rx_buf[MAX_RX_LINE+2];      // wriggle space for the \0
     uint8_t rx_index;
     UART_TX_READY_FN_T tx_ready_fn;     // in case caller wants to be told
@@ -32,19 +33,45 @@ static void uart_event_handler(app_uart_evt_t * p_event);
  */
 bool comm_uart_init(void) {
     _ctx.uartNb = COMM_UART_NB;
-    return hal_bsp_uart_init(_ctx.uartNb, COMM_UART_BAUDRATE, uart_event_handler);
+    _ctx.isOpen = hal_bsp_uart_init(_ctx.uartNb, COMM_UART_BAUDRATE, uart_event_handler);
+    return _ctx.isOpen;
 }
 
 void comm_uart_deinit(void) {
+    _ctx.isOpen = false;
     hal_bsp_uart_deinit(_ctx.uartNb);
 }
 int comm_uart_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
-    _ctx.tx_ready_fn = tx_ready;        // in case of..
-    // check if disconnecting and ignore (as can't disconnect from uart...)
-    if (data!=NULL)  {
-        return (hal_bsp_uart_tx(_ctx.uartNb, data, len));
+    if (_ctx.isOpen) {
+        _ctx.tx_ready_fn = tx_ready;        // in case of..
+        // check if disconnecting and ignore (as can't disconnect from uart...)
+        if (data!=NULL)  {
+            return (hal_bsp_uart_tx(_ctx.uartNb, data, len));
+        }
+        return 0;       // ok mate
+    } else {
+        // soz
+        return -1;
     }
-    return 0;       // ok mate
+}
+
+// handler for reinit timer
+static void reinit_uart_timeout_handler(void * p_context)
+{
+    if (_ctx.isOpen==false) {
+        comm_uart_init();
+    } // else ignore
+}
+
+// Timer to try a reinit in case UART is playing up...
+static void start_reopen_timer() {
+    /*
+    app_timer_create(&_ctx->m_reinit_uart_delay,
+                        APP_TIMER_MODE_SINGLE_SHOT,
+                        reinit_uart_timeout_handler);    
+        uint32_t reinit_delay = APP_TIMER_TICKS(10000, APP_TIMER_PRESCALER);//32 * 10000;          
+        app_timer_start(_ctx->m_reinit_uart_delay, reinit_delay, NULL);
+        */
 }
 
 /**@brief   Function for handling app_uart events.
@@ -80,11 +107,16 @@ static void uart_event_handler(app_uart_evt_t * p_event)
         break;
  
         case APP_UART_COMMUNICATION_ERROR:
-            APP_ERROR_HANDLER(p_event->data.error_communication);
+            // Not sure what else can be done
+            comm_uart_deinit();
+            start_reopen_timer();
+//            APP_ERROR_HANDLER(p_event->data.error_communication);
         break;
  
         case APP_UART_FIFO_ERROR:
-            APP_ERROR_HANDLER(p_event->data.error_code);
+            comm_uart_deinit();
+            start_reopen_timer();
+//            APP_ERROR_HANDLER(p_event->data.error_code);
         break;
         
         case APP_UART_TX_EMPTY:

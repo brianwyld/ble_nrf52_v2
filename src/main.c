@@ -60,7 +60,7 @@
  
 #define NUS_SERVICE_UUID_TYPE           BLE_UUID_TYPE_VENDOR_BEGIN                  /**< UUID type for the Nordic UART Service (vendor specific). */
  
-#define APP_ADV_INTERVAL_SLOW           64                                          /**< The advertising interval (in units of 0.625 ms. This value corresponds to 40 ms). */
+#define APP_ADV_INTERVAL_MS_SLOW        1000                                          /**< The advertising interval when not actively beaconing (in units of ms). */
 #define APP_ADV_TIMEOUT_IN_SECONDS       180                                         /**< The advertising timeout (in units of seconds). */
  
 #define APP_TIMER_PRESCALER             0                                           /**< Value of the RTC1 PRESCALER register. */ 
@@ -147,35 +147,7 @@ static void sleep_mode_enter(void)
     APP_ERROR_CHECK(err_code);
 }
  
-static void gap_params_init(void)
-{
-    uint32_t                err_code;
-    ble_gap_conn_params_t   gap_conn_params;
-    ble_gap_conn_sec_mode_t sec_mode;
-        
-    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&sec_mode);
- 
-    memset(&gap_conn_params, 0, sizeof(gap_conn_params));
- 
-    gap_conn_params.min_conn_interval = MIN_CONN_INTERVAL;
-    gap_conn_params.max_conn_interval = MAX_CONN_INTERVAL;
-    gap_conn_params.slave_latency     = SLAVE_LATENCY;
-    gap_conn_params.conn_sup_timeout  = CONN_SUP_TIMEOUT;
- 
-    err_code = sd_ble_gap_ppcp_set(&gap_conn_params);
-    APP_ERROR_CHECK(err_code);
-}
- 
- 
 
-/**@brief Function for initializing services that will be used by the application.
- * One time boot init
- */
-static void services_init(void)
-{
-    comm_ble_init();
-}
- 
 /**@brief Function for handling an event from the Connection Parameters Module.
  *
  * @details This function will be called for all events in the Connection Parameters Module
@@ -196,7 +168,7 @@ static void on_conn_params_evt(ble_conn_params_evt_t * p_evt)
     {
         err_code = sd_ble_gap_disconnect(_ctx.m_conn_handle, BLE_HCI_CONN_INTERVAL_UNACCEPTABLE);
         APP_ERROR_CHECK(err_code);
-        advertising_check_start();
+        // We will get the BLE_GAP_EVT_DISCONNECTED event to restart advertising etc
     }
 }
 
@@ -209,30 +181,7 @@ static void conn_params_error_handler(uint32_t nrf_error)
     APP_ERROR_HANDLER(nrf_error);
 }
 
-/**@brief Function for initializing the Connection Parameters module.
- * one time boot init
- */
-static void conn_params_init(void)
-{
-    uint32_t err_code;
-    ble_conn_params_init_t cp_init;
  
-    memset(&cp_init, 0, sizeof(cp_init));
- 
-    cp_init.p_conn_params                  = NULL;
-    cp_init.first_conn_params_update_delay = FIRST_CONN_PARAMS_UPDATE_DELAY;
-    cp_init.next_conn_params_update_delay  = NEXT_CONN_PARAMS_UPDATE_DELAY;
-    cp_init.max_conn_params_update_count   = MAX_CONN_PARAMS_UPDATE_COUNT;
-    cp_init.start_on_notify_cccd_handle    = BLE_GATT_HANDLE_INVALID;
-    cp_init.disconnect_on_fail             = false;
-    cp_init.evt_handler                    = on_conn_params_evt;
-    cp_init.error_handler                  = conn_params_error_handler;
- 
-    err_code = ble_conn_params_init(&cp_init);
-    APP_ERROR_CHECK(err_code);
-
-}
-
 /**@brief Function for handling events linked to our advertising.
  *
  * @details This function will be called for advertising events which are passed to the application.
@@ -269,12 +218,32 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
     }
 }
   
-/**@brief Function for the application's SoftDevice event handler.
- * 
- * @param[in] p_ble_evt SoftDevice event.
+
+/**@brief Function for dispatching a BLE stack event to all modules with a BLE stack event handler.
+ *
+ * @details This function is called from the scheduler in the main loop after a BLE stack event has
+ *          been received.
+ *
+ * @param[in] p_ble_evt  Bluetooth stack event.
  */
-static void on_ble_evt(ble_evt_t * p_ble_evt)
+static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
 {
+    // First dispatch to other services to see if they need to process it
+//    if (cfg_isConnectable())
+//    {
+    // Dispatch to ble stack services if we want to be connected
+    ble_conn_params_on_ble_evt(p_ble_evt);
+    comm_ble_dispatch(p_ble_evt);           // For NUS service (we are slave)
+//        comm_ble_c_dispatch(p_ble_evt);       // When discovering peers for NUS client connections
+//    }
+//    bsp_btn_ble_on_ble_evt(p_ble_evt);
+    // If we are scanning then make db of remote guys be up to date
+//    if (ibs_is_scan_active())
+//    {
+    ble_db_discovery_on_ble_evt(&_ctx.m_ble_db_discovery, p_ble_evt);
+//    }
+
+    // Now our own specific processing
     uint32_t err_code;
     ble_gap_evt_t * p_gap_evt = &p_ble_evt->evt.gap_evt;
  
@@ -284,6 +253,8 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             log_info("evt:gap connect");
             err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
             APP_ERROR_CHECK(err_code);
+            // Stop advertising
+            sd_ble_gap_adv_stop();
             _ctx.m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
             // password check has not been validated for this connection
             cfg_resetPasswordOk();
@@ -339,7 +310,7 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gattc_evt.conn_handle,
                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
             APP_ERROR_CHECK(err_code);
-            advertising_check_start();
+            // And we get a EVT_DISCONNECTED when its done
         break; // BLE_GATTC_EVT_TIMEOUT
  
         case BLE_GATTS_EVT_TIMEOUT:
@@ -347,8 +318,8 @@ static void on_ble_evt(ble_evt_t * p_ble_evt)
             // Disconnect on GATT Server timeout event.
             err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gatts_evt.conn_handle,
                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+            // And we get a EVT_DISCONNECTED when its done
             APP_ERROR_CHECK(err_code);
-            advertising_check_start();
         break; // BLE_GATTS_EVT_TIMEOUT
  
         case BLE_EVT_USER_MEM_REQUEST:
@@ -418,31 +389,132 @@ static void db_discovery_handler(ble_db_discovery_evt_t * p_evt)
 //    comm_ble_disconnect_client(); TODO Not sure where the disconnect for the BLE NUS GATT service should be
 }
 
-/**@brief Function for dispatching a BLE stack event to all modules with a BLE stack event handler.
+
+/**@brief Function for handling events from the BSP module.
  *
- * @details This function is called from the scheduler in the main loop after a BLE stack event has
- *          been received.
- *
- * @param[in] p_ble_evt  Bluetooth stack event.
+ * @param[in] event  Event generated by bsp
  */
-static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
+/*
+static void bsp_event_handler(bsp_event_t event)
 {
-    // Dispatch to ble stack services if we want to be connected
-//    if (cfg_isConnectable())
-//    {
-        ble_conn_params_on_ble_evt(p_ble_evt);
-        comm_ble_dispatch(p_ble_evt);           // For NUS service (we are slave)
-//        comm_ble_c_dispatch(p_ble_evt);       // When discovering peers for NUS client connections
-//    }
-//    bsp_btn_ble_on_ble_evt(p_ble_evt);
-    // If we are scanning then make db of remote guys be up to date
-//    if (ibs_is_scan_active())
-//    {
-        ble_db_discovery_on_ble_evt(&_ctx.m_ble_db_discovery, p_ble_evt);
-//    }
-    on_ble_evt(p_ble_evt);
+    switch (event)
+    {
+        case BSP_EVENT_SLEEP:
+            sleep_mode_enter();
+        break;
+
+        case BSP_EVENT_DISCONNECT:
+            comm_ble_disconnect();
+            advertising_check_start();
+        break;
+        case BSP_EVENT_WHITELIST_OFF:
+            advertising_check_start();
+        break;
+            
+        default:
+        break;
+    }
+}
+*/
+
+// Callback when system events happen
+static void sys_evt_handler(uint32_t evt)
+{
+    switch(evt)
+    {
+        case NRF_EVT_FLASH_OPERATION_SUCCESS:
+            _ctx.flashBusy = false;
+        break;
+        
+        case NRF_EVT_FLASH_OPERATION_ERROR:
+            _ctx.flashBusy = false;         // Still finished though
+        break;
+        
+        default:
+        break;
+    }
 }
 
+/**@brief Function for initializing buttons and leds.
+ *
+ * @param[out] p_erase_bonds  Will be true if the clear bonding button was pressed to wake the application up.
+ */
+/*
+static void buttons_leds_init(bool * p_erase_bonds)
+{
+    bsp_event_t startup_event;
+ 
+    uint32_t err_code = bsp_init(BSP_INIT_LED | BSP_INIT_BUTTONS,
+                                 APP_TIMER_TICKS(100, APP_TIMER_PRESCALER),
+                                 bsp_event_handler);
+    APP_ERROR_CHECK(err_code);
+ 
+    err_code = bsp_btn_ble_init(NULL, &startup_event);
+    APP_ERROR_CHECK(err_code);
+ 
+    *p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
+}
+*/
+
+/**@brief Function for initializing the Connection Parameters module.
+ * one time boot init
+ */
+static void conn_params_init(void)
+{
+    uint32_t err_code;
+    ble_conn_params_init_t cp_init;
+ 
+    memset(&cp_init, 0, sizeof(cp_init));
+ 
+    cp_init.p_conn_params                  = NULL;
+    cp_init.first_conn_params_update_delay = FIRST_CONN_PARAMS_UPDATE_DELAY;
+    cp_init.next_conn_params_update_delay  = NEXT_CONN_PARAMS_UPDATE_DELAY;
+    cp_init.max_conn_params_update_count   = MAX_CONN_PARAMS_UPDATE_COUNT;
+    cp_init.start_on_notify_cccd_handle    = BLE_GATT_HANDLE_INVALID;
+    cp_init.disconnect_on_fail             = false;
+    cp_init.evt_handler                    = on_conn_params_evt;
+    cp_init.error_handler                  = conn_params_error_handler;
+ 
+    err_code = ble_conn_params_init(&cp_init);
+    APP_ERROR_CHECK(err_code);
+
+}
+
+static void gap_params_init(void)
+{
+    uint32_t                err_code;
+    ble_gap_conn_params_t   gap_conn_params;
+    ble_gap_conn_sec_mode_t sec_mode;
+        
+    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&sec_mode);
+ 
+    memset(&gap_conn_params, 0, sizeof(gap_conn_params));
+ 
+    gap_conn_params.min_conn_interval = MIN_CONN_INTERVAL;
+    gap_conn_params.max_conn_interval = MAX_CONN_INTERVAL;
+    gap_conn_params.slave_latency     = SLAVE_LATENCY;
+    gap_conn_params.conn_sup_timeout  = CONN_SUP_TIMEOUT;
+ 
+    err_code = sd_ble_gap_ppcp_set(&gap_conn_params);
+    APP_ERROR_CHECK(err_code);
+}
+ /** @brief Function for initializing the Database Discovery Module.
+ * One time init at boot
+ */
+static void db_discovery_init(void)
+{
+    uint32_t err_code = ble_db_discovery_init(db_discovery_handler);
+    APP_ERROR_CHECK(err_code);
+}
+
+/**@brief Function for initializing services that will be used by the application.
+ * One time boot init
+ */
+static void services_init(void)
+{
+    comm_ble_init();
+}
+ 
 /**@brief Function for initializing the BLE stack.
  * One time init at boot
  * @details Initializes the SoftDevice and the BLE event interrupt.
@@ -482,48 +554,25 @@ static void ble_stack_init(void)
 
 }
 
+/* One time boot init of ble stack */
+static void ble_init(void) {
+    db_discovery_init();
 
-/**@brief Function for handling events from the BSP module.
- *
- * @param[in] event  Event generated by bsp
- */
-/*
-static void bsp_event_handler(bsp_event_t event)
-{
-    switch (event)
-    {
-        case BSP_EVENT_SLEEP:
-            sleep_mode_enter();
-        break;
+    ble_stack_init();
 
-        case BSP_EVENT_DISCONNECT:
-            comm_ble_disconnect();
-            advertising_check_start();
-        break;
-        case BSP_EVENT_WHITELIST_OFF:
-            advertising_check_start();
-        break;
-            
-        default:
-        break;
-    }
-}
-*/
-/** @brief Function for initializing the Database Discovery Module.
- * One time init at boot
- */
-static void db_discovery_init(void)
-{
-    uint32_t err_code = ble_db_discovery_init(db_discovery_handler);
-    APP_ERROR_CHECK(err_code);
+    gap_params_init();
+    services_init();
+
+    // Initialise connection parameters
+    conn_params_init();
 }
 
-/** @brief Function for the Power manager.
- */
-static void power_manage(void)
-{
-    uint32_t err_code = sd_app_evt_wait();
-    APP_ERROR_CHECK(err_code);
+/* one time system init */
+static void system_init(void)
+{            
+    softdevice_sys_evt_handler_set(sys_evt_handler);
+        
+    APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_OP_QUEUE_SIZE, NULL);
 }
 
 // Return the 'measured power @ 1m' field value for the ibeacon
@@ -675,7 +724,7 @@ static void advertising_setup(void)
     options.ble_adv_fast_interval = MSEC_TO_UNITS(cfg_getADV_IND(), UNIT_0_625_MS);
     options.ble_adv_fast_timeout  = APP_ADV_TIMEOUT_IN_SECONDS;
     options.ble_adv_slow_enabled = true;
-    options.ble_adv_slow_interval = MSEC_TO_UNITS(APP_ADV_INTERVAL_SLOW, UNIT_0_625_MS);     //1285*1.6;
+    options.ble_adv_slow_interval = MSEC_TO_UNITS(APP_ADV_INTERVAL_MS_SLOW, UNIT_0_625_MS);     //1285*1.6;
     options.ble_adv_slow_timeout  = APP_ADV_TIMEOUT_IN_SECONDS;
  
     err_code = ble_advertising_init(&advdata, &scanrsp, &options, on_adv_evt, NULL);
@@ -683,30 +732,14 @@ static void advertising_setup(void)
 }
  
  
-/**@brief Function for initializing buttons and leds.
- *
- * @param[out] p_erase_bonds  Will be true if the clear bonding button was pressed to wake the application up.
- */
-/*
-static void buttons_leds_init(bool * p_erase_bonds)
-{
-    bsp_event_t startup_event;
- 
-    uint32_t err_code = bsp_init(BSP_INIT_LED | BSP_INIT_BUTTONS,
-                                 APP_TIMER_TICKS(100, APP_TIMER_PRESCALER),
-                                 bsp_event_handler);
-    APP_ERROR_CHECK(err_code);
- 
-    err_code = bsp_btn_ble_init(NULL, &startup_event);
-    APP_ERROR_CHECK(err_code);
- 
-    *p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
-}
-*/
 
 static bool advertising_check_start()
 {
     uint32_t err_code;
+    // Can't start if currently got an active BLE connection (not enough channels)
+    if (_ctx.m_conn_handle!=BLE_CONN_HANDLE_INVALID) {
+        return false;
+    }
     // in all cases, setup to be ready otherwise the ble_advertisting_start() will fail with wrong state error
     ble_gap_conn_sec_mode_t sec_mode;    
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&sec_mode);
@@ -727,36 +760,27 @@ static bool advertising_check_start()
     {
         err_code = ble_advertising_start(ibb_isBeaconning()?BLE_ADV_MODE_FAST:BLE_ADV_EVT_SLOW);
         APP_ERROR_CHECK(err_code);
-        log_info("adv start : connectable [%s] beaconning : %s", cfg_getAdvName(), ibb_isBeaconning()?"yes":"no");
+        log_info("adv check : connectable [%s] beaconning : %s", cfg_getAdvName(), ibb_isBeaconning()?"yes":"no");
         return true;
     } else {
         //idle the adverts
         err_code = ble_advertising_start(BLE_ADV_MODE_IDLE);
         APP_ERROR_CHECK(err_code);
-        log_info("adv start : no beaconning");
+        sd_ble_gap_adv_stop();
+        log_info("adv check: no beaconning");
         return false;
     }
 }
  
-// Callback when system events happen
-static void sys_evt_handler(uint32_t evt)
+
+
+/** @brief Function for the Power manager.
+ */
+static void power_manage(void)
 {
-    switch(evt)
-    {
-        case NRF_EVT_FLASH_OPERATION_SUCCESS:
-            _ctx.flashBusy = false;
-        break;
-        
-        case NRF_EVT_FLASH_OPERATION_ERROR:
-            _ctx.flashBusy = false;         // Still finished though
-        break;
-        
-        default:
-        break;
-    }
+    uint32_t err_code = sd_app_evt_wait();
+    APP_ERROR_CHECK(err_code);
 }
-
-
 
 
  
@@ -781,34 +805,6 @@ static void deinit_uart_timeout_handler(void * p_context)
 }
 */
 
-/* one time system init */
-static void system_init(void)
-{            
-    softdevice_sys_evt_handler_set(sys_evt_handler);
-        
-    APP_TIMER_INIT(APP_TIMER_PRESCALER, APP_TIMER_OP_QUEUE_SIZE, NULL);
-}
-
-/* One time boot init of ble stack */
-static void ble_init(void) {
-    db_discovery_init();
-
-    ble_stack_init();
-
-    gap_params_init();
-    services_init();
-
-    // Initialise connection parameters
-    conn_params_init();
-    //todo remove uart disabled at 10s of ibeaconning for power
-    /*                    
-    app_timer_create(&m_deinit_uart_delay,
-                        APP_TIMER_MODE_SINGLE_SHOT,
-                        deinit_uart_timeout_handler);    
-        uint32_t deinit_delay = APP_TIMER_TICKS(10000, APP_TIMER_PRESCALER);//32 * 10000;          
-        app_timer_start(m_deinit_uart_delay, deinit_delay, NULL);
-    */
-}
 
 // Control of beaconning activity
 bool ibb_isBeaconning() {
@@ -845,7 +841,7 @@ int main(void)
 #ifdef RELEASE_BUILD
     wlog_init(-1);      // replace by 0 to get logs on uart
 #else 
-    wlog_init(0);      // replace by 0 to get logs on uart
+    wlog_init(-1);      // replace by 0 to get logs on uart
 #endif
     cfg_init();              
    log_info("config/log init done");
@@ -856,6 +852,15 @@ int main(void)
     comm_uart_tx((uint8_t *)"READY\r\n",7, NULL);
     // Init adv parameters and start if required
     advertising_check_start();
+
+    //todo remove uart disabled at 10s of ibeaconning for power
+    /*                    
+    app_timer_create(&m_deinit_uart_delay,
+                        APP_TIMER_MODE_SINGLE_SHOT,
+                        deinit_uart_timeout_handler);    
+        uint32_t deinit_delay = APP_TIMER_TICKS(10000, APP_TIMER_PRESCALER);//32 * 10000;          
+        app_timer_start(m_deinit_uart_delay, deinit_delay, NULL);
+    */
 
    log_info("waiting for commands");
     for (;;)

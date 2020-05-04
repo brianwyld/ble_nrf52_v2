@@ -16,15 +16,21 @@
 #include "bsp_minew_nrf51.h"
 
 // UARTs config
-static app_uart_comm_params_t _uart_comm_params[UART_CNT] =
+static struct {
+    bool isOpen;
+    app_uart_comm_params_t uart_comm_params;
+} _uarts[UART_CNT] = 
     {{
-        .rx_pin_no = UART0_RX_PIN_NUMBER, // RX_PIN_NUMBER A
-        .tx_pin_no = UART0_TX_PIN_NUMBER, // TX_PIN_NUMBER A
-        .rts_pin_no = UART0_RTS_PIN_NUMBER,
-        .cts_pin_no = UART0_CTS_PIN_NUMBER,
-        .flow_control = APP_UART_FLOW_CONTROL_DISABLED,
-        .use_parity = false,
-        .baud_rate = UART_BAUDRATE_BAUDRATE_Baud115200,     // NOTE : MUST USE SPECIFIC DEFINES AS ITS NOT JUST '115200'
+        .isOpen = false,
+        .uart_comm_params = {
+            .rx_pin_no = UART0_RX_PIN_NUMBER, // RX_PIN_NUMBER A
+            .tx_pin_no = UART0_TX_PIN_NUMBER, // TX_PIN_NUMBER A
+            .rts_pin_no = UART0_RTS_PIN_NUMBER,
+            .cts_pin_no = UART0_CTS_PIN_NUMBER,
+            .flow_control = APP_UART_FLOW_CONTROL_DISABLED,
+            .use_parity = false,
+            .baud_rate = UART_BAUDRATE_BAUDRATE_Baud115200,     // NOTE : MUST USE SPECIFIC DEFINES AS ITS NOT JUST '115200'
+        }
     }
     };
 
@@ -38,14 +44,18 @@ bool hal_bsp_uart_init(int uartNb, int baudrate_selector, app_uart_event_handler
     if (uartNb<0 || uartNb>=UART_CNT) {
         return NULL;
     }
-    _uart_comm_params[uartNb].baud_rate = baudrate_selector;
-    APP_UART_FIFO_INIT( (&_uart_comm_params[uartNb]),
-                       UART_RX_BUF_SIZE,
-                       UART_TX_BUF_SIZE,
-                       uart_event_handler,
-                       APP_IRQ_PRIORITY_LOW,
-                       err_code);
-    APP_ERROR_CHECK(err_code);
+    // Protect against multiple inits of same uart
+    if (_uarts[uartNb].isOpen==false) {
+        _uarts[uartNb].uart_comm_params.baud_rate = baudrate_selector;
+        APP_UART_FIFO_INIT( (&_uarts[uartNb].uart_comm_params),
+                        UART_RX_BUF_SIZE,
+                        UART_TX_BUF_SIZE,
+                        uart_event_handler,
+                        APP_IRQ_PRIORITY_LOW,
+                        err_code);
+        APP_ERROR_CHECK(err_code);
+        _uarts[uartNb].isOpen = true;
+    }
     return true;
 }
 
@@ -53,8 +63,11 @@ void hal_bsp_uart_deinit(int uartNb) {
     if (uartNb<0 || uartNb >= UART_CNT) {
         return;
     }
-    // only 1 uart in their api..
-    app_uart_close();
+    if (_uarts[uartNb].isOpen==true) {
+        // only 1 uart in their api..
+        app_uart_close();
+        _uarts[uartNb].isOpen = false;
+    }
 }
 
 // Tx line. returns number of bytes not sent due to flow control or -1 for error
@@ -62,13 +75,16 @@ int hal_bsp_uart_tx(int uartNb, uint8_t* d, int len) {
     if (uartNb<0 || uartNb >= UART_CNT) {
         return -1;      // fatal error
     }
-    for(int i=0;i<len;i++) {
-        // nrf uart api only allows one uart, sorry
-        if (app_uart_put(d[i])!=NRF_SUCCESS) {
-            return (len-i);       // Number of bytes not txd
+    if (_uarts[uartNb].isOpen) {
+        for(int i=0;i<len;i++) {
+            // nrf uart api only allows one uart, sorry
+            if (app_uart_put(d[i])!=NRF_SUCCESS) {
+                return (len-i);       // Number of bytes not txd
+            }
         }
+        return 0;
     }
-    return 0;
+    return -1;
 }
 
 // UART enable IO
