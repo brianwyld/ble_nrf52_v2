@@ -26,7 +26,6 @@ void comm_ble_remote_disconnected(void);
 // Tx line. returns number of bytes not sent due to flow control. 
 int comm_ble_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready);
 void comm_ble_dispatch(ble_evt_t * p_ble_evt);
-void comm_ble_discovery_dispatch(ble_db_discovery_evt_t * p_evt);
 
 #ifdef __cplusplus
 }

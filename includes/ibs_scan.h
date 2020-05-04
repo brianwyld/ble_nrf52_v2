@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include "main.h"
 
-#define IBS_SCAN_LIST_LENGTH 100
+#define IBS_SCAN_LIST_LENGTH 120
 
 #define IBS_SCAN_HEADER_LENGTH 9
 #define IBS_SCAN_UUID_LENGTH 16
@@ -13,6 +13,7 @@
 #define IBS_SCAN_MINOR_LENGTH 2
 #define IBS_SCAN_MEAS_POWER_LENGTH 1
 
+// TODO : given we use this table only to avoid sending duplicates, no point in keeping meas_pow or rssi in it...
 typedef struct {
 	uint16_t major;
 	uint16_t minor;

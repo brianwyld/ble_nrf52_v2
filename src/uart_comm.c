@@ -107,9 +107,8 @@ static void uart_event_handler(app_uart_evt_t * p_event)
         break;
  
         case APP_UART_COMMUNICATION_ERROR:
-            // Not sure what else can be done
-            comm_uart_deinit();
-            start_reopen_timer();
+            // This is for errors such as parity, framing, overrun or break (all 0 on the line)
+            // None of these are fatal so we can ignore them
 //            APP_ERROR_HANDLER(p_event->data.error_communication);
         break;
  

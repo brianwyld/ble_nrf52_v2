@@ -116,17 +116,8 @@ int comm_ble_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
     return 0;       // all sent
 }
 
-void comm_ble_discovery_dispatch(ble_db_discovery_evt_t * p_evt) {
-/* not doing nuc_c currently
-    if (p_evt!=NULL) {
-        ble_nus_c_on_db_disc_evt(&_ctx.m_nus_c, p_evt);
-    }
-    */
-}
-
 void comm_ble_dispatch(ble_evt_t * p_ble_evt) {
     ble_nus_on_ble_evt(&_ctx.m_nus, p_ble_evt);
-//    ble_nus_c_on_ble_evt(&_ctx.m_nus_c,p_ble_evt);
 }
 /**@brief Function for handling the data from the Nordic UART Service.
  *

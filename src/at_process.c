@@ -156,6 +156,10 @@ static void at_process_line(char* line, UART_TX_FN_T utx_fn) {
             s++;
         }
     }
+    if (strlen(els[0])==0) {
+        // empty bad command, ignore it
+        return;
+    }
     // find it in the list
     for(int i=0;i<_ctx.ncmds;i++) {
         if (strcmp(els[0], _ctx.cmds[i].cmd)==0) {
