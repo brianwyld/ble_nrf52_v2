@@ -58,8 +58,9 @@ static ATRESULT atcmd_start_scan(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_stop_scan(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_start_ib(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_stop_ib(uint8_t nargs, char* argv[], void* odev);
+static ATRESULT atcmd_enable_conn(uint8_t nargs, char* argv[], void* odev);
+static ATRESULT atcmd_disable_conn(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_push(uint8_t nargs, char* argv[], void* odev);
-static ATRESULT atcmd_type(uint8_t nargs, char* argv[], void* odev);
 
 static ATCMD_DEF_t ATCMDS[] = {
     { .cmd="AT", .desc="Wakeup", .fn=atcmd_hello},
@@ -77,8 +78,9 @@ static ATCMD_DEF_t ATCMDS[] = {
     { .cmd="AT+STOP", .desc="Stop scan", .fn=atcmd_stop_scan},
     { .cmd="AT+IB_START", .desc="Start ibeaconning", .fn=atcmd_start_ib},
     { .cmd="AT+IB_STOP", .desc="Stop ibeaconning", .fn=atcmd_stop_ib},
+    { .cmd="AT+CONN_EN", .desc="Enable remote connection", .fn=atcmd_enable_conn},
+    { .cmd="AT+CONN_DIS", .desc="Disable remote connection", .fn=atcmd_disable_conn},
     { .cmd="AT+PUSH", .desc="Push scan data", .fn=atcmd_push},
-    { .cmd="AT+TYPE", .desc="Set card mode", .fn=atcmd_type},
 };
 
 // Our local data context
@@ -198,29 +200,14 @@ static ATRESULT atcmd_hello(uint8_t nargs, char* argv[], void* odev) {
     return ATCMD_OK;
 }
 
+// Return decimal integer with firmware version
 static ATRESULT atcmd_who(uint8_t nargs, char* argv[], void* odev) {
-    if (ibb_isBeaconning()) {
-        wconsole_println(odev, TYPE_IBEACON);
-    } else {
-        wconsole_println(odev, TYPE_SCANNER);
-    }
+    wconsole_println(odev, "%d", (((cfg_getFWMajor() & 0xFF)<<8) + (cfg_getFWMinor() & 0xff)));
     return ATCMD_OK;
 }
 
 static ATRESULT atcmd_push(uint8_t nargs, char* argv[], void* odev) {
     // always in push mode anyway
-    return ATCMD_OK;
-}
-static ATRESULT atcmd_type(uint8_t nargs, char* argv[], void* odev) {
-    // If type set to scanner, then stop ibeaconning and vice-versa
-    if (nargs==2) {
-        if (strcmp(argv[1], TYPE_SCANNER)==0) {
-            ibb_stop();
-        }
-        if (strcmp(argv[1], TYPE_IBEACON)==0) {
-            ibs_scan_stop();
-        }
-    }
     return ATCMD_OK;
 }
 
@@ -574,6 +561,14 @@ static ATRESULT atcmd_start_ib(uint8_t nargs, char* argv[], void* odev) {
 
 static ATRESULT atcmd_stop_ib(uint8_t nargs, char* argv[], void* odev) {
     ibb_stop();
+    return ATCMD_OK;
+}
+static ATRESULT atcmd_enable_conn(uint8_t nargs, char* argv[], void* odev) {
+    cfg_setConnectable(true);
+    return ATCMD_OK;
+}
+static ATRESULT atcmd_disable_conn(uint8_t nargs, char* argv[], void* odev) {
+    cfg_setConnectable(false);
     return ATCMD_OK;
 }
 
