@@ -244,13 +244,19 @@ static void ble_evt_dispatch(ble_evt_t * p_ble_evt)
     {
         case BLE_GAP_EVT_CONNECTED:
             log_info("evt:gap connect");
-            err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
-            APP_ERROR_CHECK(err_code);
-            // Stop advertising
-            sd_ble_gap_adv_stop();
-            _ctx.m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
-            // password check has not been validated for this connection
-            cfg_resetPasswordOk();
+            if (cfg_getConnectable()) {
+                err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
+                APP_ERROR_CHECK(err_code);
+                // Stop advertising
+                sd_ble_gap_adv_stop();
+                _ctx.m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
+                // password check has not been validated for this connection
+                cfg_resetPasswordOk();
+            } else {
+                // Not allowed to connect
+                err_code = sd_ble_gap_disconnect(_ctx.m_conn_handle, BLE_HCI_CONN_INTERVAL_UNACCEPTABLE);
+                APP_ERROR_CHECK(err_code);
+            }
         break; // BLE_GAP_EVT_CONNECTED
  
         case BLE_GAP_EVT_DISCONNECTED:
@@ -636,8 +642,6 @@ static void advertising_setup(void)
     ble_uuid_t m_adv_uuids[] = {{BLE_UUID_NUS_SERVICE, NUS_SERVICE_UUID_TYPE}};     // Advertise NUS server for at commands over NUS
     int8_t txPowerLevel = cfg_getTXPOWER_Level();
 
-    uint8_t flags = (BLE_GAP_ADV_FLAG_LE_GENERAL_DISC_MODE |
-                                        BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED);
     memset(&advdata, 0, sizeof(advdata));
     memset(&scanrsp, 0, sizeof(scanrsp));
     memset(&options, 0, sizeof(options));
@@ -659,14 +663,19 @@ static void advertising_setup(void)
  
     // Build advertising data struct to pass into @ref ble_advertising_init.
     advdata.name_type             = BLE_ADVDATA_NO_NAME;
-    advdata.flags                 = flags;
     advdata.p_manuf_specific_data = &manuf_specific_data;
-
-    err_code = ble_advdata_set(&advdata, NULL);
-    APP_ERROR_CHECK(err_code);
-    
-    scanrsp.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
-    scanrsp.uuids_complete.p_uuids  = m_adv_uuids;
+    // depending on if we accept connections or not, advert data is different
+    if (cfg_getConnectable()) {
+        advdata.flags                 = (BLE_GAP_ADV_FLAG_LE_GENERAL_DISC_MODE |
+                                        BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED);
+        scanrsp.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
+        scanrsp.uuids_complete.p_uuids  = m_adv_uuids;
+    } else {
+        advdata.flags                 = (BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED);
+        // Not connectable, no uuids advertised to avoid access to NUS
+        scanrsp.uuids_complete.uuid_cnt = 0;
+        scanrsp.uuids_complete.p_uuids  = NULL;
+    }
     scanrsp.name_type = BLE_ADVDATA_FULL_NAME;
     scanrsp.p_tx_power_level = &txPowerLevel;
 
@@ -677,6 +686,10 @@ static void advertising_setup(void)
     options.ble_adv_slow_interval = MSEC_TO_UNITS(APP_ADV_INTERVAL_MS_SLOW, UNIT_0_625_MS);     //1285*1.6;
     options.ble_adv_slow_timeout  = APP_ADV_TIMEOUT_IN_SECONDS;
  
+//    err_code = ble_advdata_set(&advdata, NULL); Done in ble_advertising_init using advdata
+//    APP_ERROR_CHECK(err_code);
+    // TODO : using ble_advertising module means out ibeacons are always flagged as connectable 
+    // (never sets type to BLE_GAP_ADV_TYPE_ADV_NONCONN_IND)
     err_code = ble_advertising_init(&advdata, &scanrsp, &options, on_adv_evt, NULL);
     APP_ERROR_CHECK(err_code);
 }
