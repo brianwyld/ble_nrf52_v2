@@ -238,6 +238,18 @@ uint16_t Util_readLE_uint16_t(uint8_t* b, uint8_t l) {
     }
     return ret;
 }
+/*
+ * helper to read 16 bit BE from buffer (may be 0 stripped)
+ */
+uint16_t Util_readBE_uint16_t(uint8_t* b, uint8_t l) {
+    uint16_t ret = 0;
+    for(int i=0;i<2;i++) {
+        if (b!=NULL && i<l) {
+            ret = (ret << 8) + b[i];
+        } // else 0
+    }
+    return ret;
+}
 
 /* 
 Return true if data block is not just 0's, false if it is

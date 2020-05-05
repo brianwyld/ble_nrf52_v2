@@ -53,7 +53,7 @@ static struct {
     .isIBeaconning=false,
     .company_id = 0x004C, 
     .extra_value = 0xC3,
-    .passwordTab = {'0', '0', '0', '0'},
+    .passwordTab = {'1', '5', '1', '9'},
     .masterPasswordTab = {'6', '0', '6', '7'},
 };
 // Not in config

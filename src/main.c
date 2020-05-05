@@ -662,8 +662,15 @@ static void advertising_setup(void)
     manuf_specific_data.data.size   = APP_BEACON_INFO_LENGTH;
  
     // Build advertising data struct to pass into @ref ble_advertising_init.
-    advdata.name_type             = BLE_ADVDATA_NO_NAME;
-    advdata.p_manuf_specific_data = &manuf_specific_data;
+    if (cfg_isIBeaconning()) {
+        // Only make our advert look like an ibeacon if we are wanting it to be one
+        advdata.name_type             = BLE_ADVDATA_NO_NAME;
+        advdata.p_manuf_specific_data = &manuf_specific_data;
+    } else {
+        advdata.name_type             = BLE_ADVDATA_FULL_NAME;
+        // And no addition manuf data so it doesn't look like an ibeacon
+    }
+
     // depending on if we accept connections or not, advert data is different
     if (cfg_getConnectable()) {
         advdata.flags                 = (BLE_GAP_ADV_FLAG_LE_GENERAL_DISC_MODE |
@@ -679,6 +686,7 @@ static void advertising_setup(void)
     scanrsp.name_type = BLE_ADVDATA_FULL_NAME;
     scanrsp.p_tx_power_level = &txPowerLevel;
 
+    // Give both options for advert speed (the one used depends on whether isIBeaconning() is true or not)
     options.ble_adv_fast_enabled  = true;
     options.ble_adv_fast_interval = MSEC_TO_UNITS(cfg_getADV_IND(), UNIT_0_625_MS);
     options.ble_adv_fast_timeout  = APP_ADV_TIMEOUT_IN_SECONDS;

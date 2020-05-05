@@ -183,8 +183,9 @@ static void ibs_scan_add(uint8_t* data, int8_t rssi)
     {
         return;     // list is full..
     }
-    uint16_t major = Util_readLE_uint16_t(&data[IBS_IBEACON_MAJOR_OFFSET],2);
-    uint16_t minor = Util_readLE_uint16_t(&data[IBS_IBEACON_MINOR_OFFSET],2);    
+    // Major and minor are BE format
+    uint16_t major = Util_readBE_uint16_t(&data[IBS_IBEACON_MAJOR_OFFSET],2);
+    uint16_t minor = Util_readBE_uint16_t(&data[IBS_IBEACON_MINOR_OFFSET],2);    
     // Check if same major/minor/uuid not in the list already
     for (int i = 0; i < _ctx.ibs_scan_result_index; i++)
     {
@@ -228,7 +229,7 @@ static bool ibs_is_adv_pkt(uint8_t *data) {
 				(data[5] == 0x4C) && // Apple Company iD 0
 				(data[6] == 0x00) && // Apple Company iD 1
 				(data[7] == 0x02) && // Proximity Beacon Type 0
-				(data[8] == 0x15); // Proximity Beacon Type 1
+				(data[8] == 0x15); // data length 21
 
 	return result;
 }
