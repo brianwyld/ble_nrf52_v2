@@ -508,6 +508,7 @@ static ATRESULT atcmd_start_ib(uint8_t nargs, char* argv[], void* odev) {
         unsigned int extra;
         unsigned int interMS;
         int txpower;
+        // TODO allow an individual param to be ignored eg if it starts with *?
         if (Util_scanhex(argv[1], 16, uuid)!=16) 
 //        if (sscanf(argv[1], "%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
 //                    &uuid[0],&uuid[1],&uuid[2],&uuid[3],&uuid[4],&uuid[5],&uuid[6],&uuid[7],
