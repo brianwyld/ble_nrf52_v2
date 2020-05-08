@@ -7,19 +7,12 @@
 
 #define IBS_SCAN_LIST_LENGTH 120
 
-#define IBS_SCAN_HEADER_LENGTH 9
-#define IBS_SCAN_UUID_LENGTH 16
-#define IBS_SCAN_MAJOR_LENGTH 2
-#define IBS_SCAN_MINOR_LENGTH 2
-#define IBS_SCAN_MEAS_POWER_LENGTH 1
-
-// TODO : given we use this table only to avoid sending duplicates, no point in keeping meas_pow or rssi in it...
+// TODO : given we use this table only to avoid sending duplicates, no point in keeping rssi in it? unless we're tracking rssi and resending if it changes?
+// Also the structure is now 5 bytes, which the compilier is gonna pad to 8 bytes I bet...
 typedef struct {
 	uint16_t major;
 	uint16_t minor;
-	uint8_t meas_pow;
 	uint8_t rssi;
-
 } ibs_scan_result_t;
 
 

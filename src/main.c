@@ -814,7 +814,7 @@ int main(void)
 #ifdef RELEASE_BUILD
     wlog_init(-1);      // replace by 0 to get logs on uart
 #else 
-    wlog_init(-1);      // replace by 0 to get logs on uart
+    wlog_init(-1);      // replace by 0 to get logs on uart - warning will disrupt remote guy if connected..
 #endif
     cfg_init();              
    log_info("config/log init done");

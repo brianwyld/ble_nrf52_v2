@@ -9,7 +9,6 @@ ROOT_DIR = .
 #d:/wyres/code/BLE_V2
 # Name of output file
 OUTPUT_DIR     = ./outputs
-OUTPUT_ELF_DIR = /dev/ble_modem
 OUTPUT_FILE    = ble_modem
 OUTPUT_DIRFILE = $(OUTPUT_DIR)/$(OUTPUT_FILE)
 
@@ -19,9 +18,10 @@ OPENOCD = "c:/soft/openocd-0.10.0"
 OPENOCD_SCRIPT = "$(OPENOCD)/share/openocd/scripts"
 MKDIR = "mkdir.exe"
 
-# GNU parameters
+# GNU parameters - if gcc is on your path then leave GNU_INSTALL_ROOT empty
 #C:\Program Files (x86)\GNU Tools ARM Embedded\8 2019-q3-update
-GNU_INSTALL_ROOT := $(ROOT_DIR)/GNU_Tools_Arm_Embedded/7_2018-q2-update
+#GNU_INSTALL_ROOT := $(ROOT_DIR)/GNU_Tools_Arm_Embedded/7_2018-q2-update/bin/
+GNU_INSTALL_ROOT := 
 GNU_PREFIX := arm-none-eabi
 
 
@@ -35,15 +35,15 @@ GNU_PREFIX := arm-none-eabi
 #GDB 	= $(TARGET)gdb
 
 # Toolchain commands
-CC      := "$(GNU_INSTALL_ROOT)/bin/$(GNU_PREFIX)-gcc"
-CXX     := "$(GNU_INSTALL_ROOT)/bin/$(GNU_PREFIX)-c++"
-AS      := "$(GNU_INSTALL_ROOT)/bin/$(GNU_PREFIX)-as"
-AR      := "$(GNU_INSTALL_ROOT)/bin/$(GNU_PREFIX)-ar" -r
-LD      := "$(GNU_INSTALL_ROOT)/bin/$(GNU_PREFIX)-ld"
-NM      := "$(GNU_INSTALL_ROOT)/bin/$(GNU_PREFIX)-nm"
-OBJDUMP := "$(GNU_INSTALL_ROOT)/bin/$(GNU_PREFIX)-objdump"
-OBJCOPY := "$(GNU_INSTALL_ROOT)/bin/$(GNU_PREFIX)-objcopy"
-SIZE    := "$(GNU_INSTALL_ROOT)/bin/$(GNU_PREFIX)-size"
+CC      := "$(GNU_INSTALL_ROOT)$(GNU_PREFIX)-gcc"
+CXX     := "$(GNU_INSTALL_ROOT)$(GNU_PREFIX)-c++"
+AS      := "$(GNU_INSTALL_ROOT)$(GNU_PREFIX)-as"
+AR      := "$(GNU_INSTALL_ROOT)$(GNU_PREFIX)-ar" -r
+LD      := "$(GNU_INSTALL_ROOT)$(GNU_PREFIX)-ld"
+NM      := "$(GNU_INSTALL_ROOT)$(GNU_PREFIX)-nm"
+OBJDUMP := "$(GNU_INSTALL_ROOT)$(GNU_PREFIX)-objdump"
+OBJCOPY := "$(GNU_INSTALL_ROOT)$(GNU_PREFIX)-objcopy"
+SIZE    := "$(GNU_INSTALL_ROOT)$(GNU_PREFIX)-size"
 $(if $(shell $(CC) --version),,$(info Cannot find: $(CC).) \
   $(info Please set values in: "$(abspath $(TOOLCHAIN_CONFIG_FILE))") \
   $(info according to the actual configuration of your system.) \
@@ -377,19 +377,15 @@ size:
 	$(SIZE) $(OUTPUT_DIRFILE).hex
 # $(SIZE) $(OUTPUT_DIRFILE).bin
 
-copy : 
-	cp $(OUTPUT_DIRFILE).elf $(OUTPUT_ELF_DIR)
-	cp $(OUTPUT_DIRFILE).hex $(OUTPUT_ELF_DIR)
-
 binsize: bin
 	@du -bhs $(OUTPUT_DIRFILE).bin
 	
 disassemble:
 	$(OBJDUMP) -hd $(OUTPUT_DIRFILE).elf > $(OUTPUT_DIRFILE).lss
 
-itall: clean release hex bin disassemble size copy
+itall: clean release hex bin disassemble size
 
-itall_debug: clean debug hex bin disassemble size copy
+itall_debug: clean debug hex bin disassemble size
 
 # NOTE flash/debug rules here for info, untested in specific project
 # Reset target

@@ -16,10 +16,17 @@
 
 
 // IBEACON Structure field offsets
-#define IBS_IBEACON_UUID_OFFSET 9
-#define IBS_IBEACON_MAJOR_OFFSET 25
-#define IBS_IBEACON_MINOR_OFFSET 27
-#define IBS_IBEACON_MEAS_POWER_OFFSET 29
+// Note that IBEACON advertising frame is completely fixed in format even if it is a standard advert TLV...
+#define IBS_IBEACON_HEADER_LENGTH 9
+#define IBS_IBEACON_UUID_LENGTH (UUID128_SIZE)
+#define IBS_IBEACON_MAJOR_LENGTH 2
+#define IBS_IBEACON_MINOR_LENGTH 2
+#define IBS_IBEACON_MEAS_POWER_LENGTH 1
+
+#define IBS_IBEACON_UUID_OFFSET (IBS_IBEACON_HEADER_LENGTH)
+#define IBS_IBEACON_MAJOR_OFFSET (IBS_IBEACON_UUID_OFFSET+IBS_IBEACON_UUID_LENGTH)
+#define IBS_IBEACON_MINOR_OFFSET (IBS_IBEACON_MAJOR_OFFSET+IBS_IBEACON_MAJOR_LENGTH)
+#define IBS_IBEACON_MEAS_POWER_OFFSET (IBS_IBEACON_MINOR_OFFSET+IBS_IBEACON_MINOR_LENGTH)
 
 /**
  * @brief Parameters used when scanning.
@@ -59,7 +66,7 @@ static struct {
 
 // Predecs
 static bool ibs_is_adv_pkt(uint8_t *data);
-static void ibs_scan_add(uint8_t* data2, int8_t rssi);
+static void ibs_scan_add(uint8_t* remoteaddr, uint8_t* data2, int8_t rssi);
 static bool ibs_scan_uuid_match(uint8_t* uuid);
 
 /**@brief Function to start scanning.
@@ -143,7 +150,7 @@ void ibs_handle_advert(ble_gap_evt_adv_report_t * p_adv_report)
     {
         if (ibs_scan_uuid_match(&p_adv_report->data[IBS_IBEACON_UUID_OFFSET]))
         {
-            ibs_scan_add(p_adv_report->data, p_adv_report->rssi);
+            ibs_scan_add(p_adv_report->peer_addr.addr,p_adv_report->data, p_adv_report->rssi);
         }
     }
 
@@ -157,7 +164,7 @@ void ibs_scan_set_uuid_filter(uint8_t* uuid)
     }
     else
     {
-        memcpy(_ctx.ibs_scan_filter_uuid, uuid, UUID128_SIZE);
+        memcpy(_ctx.ibs_scan_filter_uuid, uuid, IBS_IBEACON_UUID_LENGTH);
         _ctx.ibs_scan_filter_uuid_active = true;
     }
 }
@@ -168,7 +175,7 @@ static bool ibs_scan_uuid_match(uint8_t* uuid)
 {
     if (_ctx.ibs_scan_filter_uuid_active)
     {
-        return (memcmp(uuid, _ctx.ibs_scan_filter_uuid, IBS_SCAN_UUID_LENGTH) == 0);
+        return (memcmp(uuid, _ctx.ibs_scan_filter_uuid, IBS_IBEACON_UUID_LENGTH) == 0);
     }
     else
     {
@@ -176,7 +183,7 @@ static bool ibs_scan_uuid_match(uint8_t* uuid)
     }
 }
 
-static void ibs_scan_add(uint8_t* data, int8_t rssi)
+static void ibs_scan_add(uint8_t* remoteaddr, uint8_t* data, int8_t rssi)
 {    
     // copy major, minor, measpow
     if (_ctx.ibs_scan_result_index >= IBS_SCAN_LIST_LENGTH)
@@ -193,6 +200,7 @@ static void ibs_scan_add(uint8_t* data, int8_t rssi)
         {
             // Note we don't keep the UUID in the table to save space -> issue if ibeacons with same maj/min and not using uuid filter...
             // update RSSI
+            // If rssi changes 'significantly' from the first time, then resend on uart?
             _ctx.ibs_scan_results[i].rssi = rssi;
             return;
         }
@@ -201,15 +209,15 @@ static void ibs_scan_add(uint8_t* data, int8_t rssi)
     // Store info in new slot
     ib->major = major;
     ib->minor = minor;
-    ib->meas_pow = data[IBS_IBEACON_MEAS_POWER_OFFSET];
     ib->rssi = rssi;
     
-    // Create output line (all values in hex) : MAJHEX,MINHEX,XTRA,RSSI,2 LE bytes UUID
+    uint8_t meas_pow = data[IBS_IBEACON_MEAS_POWER_OFFSET];
+    // Create output line (all values in hex) : MAJHEX,MINHEX,XTRA,RSSI,remote device address
     char line[32] = {0};
-    sprintf(line, "%04x,%04x,%2x,%2x,%02x%02x\r\n",
+    sprintf(line, "%04x,%04x,%2x,%2x,%02x%02x%02x%02x%02x%02x\r\n",
                 ib->major, ib->minor,
-                ib->meas_pow, ib->rssi,
-                data[IBS_IBEACON_UUID_OFFSET+14], data[IBS_IBEACON_UUID_OFFSET+15]);
+                meas_pow, ib->rssi,
+                remoteaddr[0],remoteaddr[1],remoteaddr[2],remoteaddr[3],remoteaddr[4],remoteaddr[5]);
     // And send to our preferred serial output
     if ((*_ctx.output_tx_fn)((uint8_t*)line, strlen(line), NULL)==0) {
         _ctx.ibs_scan_result_index++;
