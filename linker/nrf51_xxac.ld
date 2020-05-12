@@ -6,9 +6,12 @@ MEMORY
 {
   /* flash is 0x40000 size (256kb) for nRF51822 */
   /* With softdevice, our app starts at 0x1B000 (see S130 SoftDevice spec v2.0 Memory resource Map and Usage) */
-  /* We leave 4K (0x1000) for our config function at the end */
-  FLASH (rx) : ORIGIN = 0x1b000, LENGTH = 0x40000-0x1b000-0x1000     
-  FLASH_CFG(rw!x) : ORIGIN = 0x40000-0x1000, LENGTH = 0x1000
+  /* And we run to 0x3ABFF (to leave 3AC00->3FFFF for the bootloader+bootloader settings) which is a total of 127kb */
+  /* We leave 1K (0x400) for our config store at the end of the app area, so our app can be up to 126kb */
+  FLASH (rx) : ORIGIN = 0x1b000, LENGTH = 0x3AC00-0x1b000-0x400    
+  FLASH_CFG (rw!x) : ORIGIN = 0x3AC00-0x400, LENGTH = 0x400
+  BOOTLOADER_START (rx) : ORIGIN = 0x3AC00, LENGTH = 0x5000
+  BOOTLOADER_SETTINGS (rw!x) : ORIGIN = 0x3FC00, LENGTH = 0x400
 
   /* RAM starts at 0x20000000 and is size 0x4000 (16kb) */
   /* our RAM area is just after softdevice area , up to the end */

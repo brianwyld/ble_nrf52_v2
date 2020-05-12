@@ -44,9 +44,12 @@ void comm_uart_deinit(void) {
 int comm_uart_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
     if (_ctx.isOpen) {
         _ctx.tx_ready_fn = tx_ready;        // in case of..
-        // check if disconnecting and ignore (as can't disconnect from uart...)
+        // check if disconnecting 
         if (data!=NULL)  {
             return (hal_bsp_uart_tx(_ctx.uartNb, data, len));
+        } else {
+            // can't disconnect from uart... but let them know
+            return (hal_bsp_uart_tx(_ctx.uartNb, "AT+DISC\r\n", 10));
         }
         return 0;       // ok mate
     } else {

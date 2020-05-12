@@ -1,16 +1,20 @@
 # Description
 
-This project is made to compile and use the BLE iBeacon + scanner Wyres firmware under GCC toolchain.
-The whole toolchain is located in the directory but the last commit of the makefile references pre-installed gcc toolchain.
+This project is made to compile and use the BLE iBeacon + scanner Wyres firmware using GCC toolchain.
+It uses the Nordic SDK/SoftDevice system:
+ - SDK 12.3.0 (approx)
+ - Softdevice S130 v2.0.1 (probably)
+[approx because nordic don't include a version header file, so its tricky to tell exactly which version of the SDK/SD you have..]
 
 # Use
 
-All the source files, toolchain, includes files and linker scripts are located in the project.
-
+All the source files, header files and linker scripts are located in the project.
+GCC tools should be installed on the PC, and have their bin in the PATH.
+OpenOCD can be used to flash the nrf51, installed in c:/soft/openocd-0.10.0 (otherwise go change flash_w_stlink.bat)
 
 ## makefile
 
-You have to set your gcc path in makefile :
+You have to set your gcc path in makefile IFF it is not in your PATH eg:
 GNU_INSTALL_ROOT := C:\Program Files (x86)\GNU Tools ARM Embedded\8 2019-q3-update 
 
 Run "make cleanOutputs" to clean all previous outputs.

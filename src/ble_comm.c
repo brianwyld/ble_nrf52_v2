@@ -86,6 +86,11 @@ void comm_ble_local_disconnected(void) {
     _ctx.rx_index = 0;
 }
 
+// are we currently connected?
+bool comm_ble_isConnected() {
+    return _ctx.connected;
+}
+
 // Tx line. returns number of bytes not sent due to flow control or -1 for error 
 int comm_ble_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
     if (!_ctx.connected) {

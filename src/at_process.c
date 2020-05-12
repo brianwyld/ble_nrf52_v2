@@ -22,22 +22,19 @@
 #include "main.h"
 #include "at_process.h"
 #include "comm_uart.h"
+#include "comm_ble.h"
 
 #define MAX_TXSZ (100)
 #define MAX_ARGS (8)
 
 // per at command we have a definiton:
-typedef enum { ATCMD_OK, ATCMD_GENERR, ATCMD_BADARG } ATRESULT;
+typedef enum { ATCMD_OK, ATCMD_GENERR, ATCMD_BADARG, ATCMD_PROCESSED } ATRESULT;
 typedef ATRESULT (*ATCMD_CBFN_t)(uint8_t nargs, char* argv[], void* odev);
 typedef struct {
     const char* cmd;
     const char* desc;
     ATCMD_CBFN_t fn;
 } ATCMD_DEF_t;
-
-static const char* TYPE_SCANNER="1";
-//static const char* TYPE_UART="2";     // Not required
-static const char* TYPE_IBEACON="3";
 
 // Write output to console on given device
 static bool wconsole_println(void* udev, const char* l, ...);
@@ -51,6 +48,7 @@ static ATRESULT atcmd_listcmds(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_info(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_getcfg(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_setcfg(uint8_t nargs, char* argv[], void* odev);
+static ATRESULT atcmd_checkconnect(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_connect(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_disconnect(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_password(uint8_t nargs, char* argv[], void* odev);
@@ -71,6 +69,7 @@ static ATCMD_DEF_t ATCMDS[] = {
     { .cmd="AT+GETCFG", .desc="Show config", .fn=atcmd_getcfg},     
     { .cmd="AT+SETCFG", .desc="Set config", .fn=atcmd_setcfg},
     { .cmd="AT+VERSION", .desc="FW version", .fn=atcmd_info},         
+    { .cmd="AT+CONN?", .desc="Check connected", .fn=atcmd_checkconnect},
     { .cmd="AT+CONN", .desc="Connect", .fn=atcmd_connect},  
     { .cmd="AT+DISC", .desc="Disconnect", .fn=atcmd_disconnect},  
     { .cmd="AT+PASS", .desc="Check password", .fn=atcmd_password},
@@ -107,12 +106,16 @@ void at_process_input(char* data, UART_TX_FN_T source_txfn) {
             // ah nope its the other
             dest_txfn = _ctx.passThru_txfn2;
         }
-        // check for disconnect, else pass the data on
-        if (strcmp("AT+DISC", data)==0) {
+        // check for disconnect from either side
+        if (strncmp("AT+DISC", data,7)==0) {
             (*dest_txfn)(NULL, -1, NULL);        // Tell remote dest we're done
             (*source_txfn)(NULL, -1, NULL);       // and confirm to source
             _ctx.passThru_txfn1 = NULL;      // ie disconnect
             _ctx.passThru_txfn2 = NULL;      // ie disconnect
+        } else if (strncmp("AT+CONN?", data,8)==0) {
+            // connection check (aka base wconsole checking if anyone listening)
+            // we are (obviously) cross connected -> state 2 (0=no ble client, 1=ble client but not cross-connected)
+            wconsole_println(source_txfn, "2");
         } else {
             // Give it all to dest
             if ((*dest_txfn)((uint8_t*)data, strlen(data), NULL)<0) {
@@ -390,26 +393,53 @@ static ATRESULT atcmd_setcfg(uint8_t nargs, char* argv[], void* odev) {
     return ATCMD_OK;
 }
 
-// Request to cross-connect to another comm port
-// This may be from the BLE uart service, to the UART port (classic) if no params are given
-// or from uart to a remote BLE client (if relevant addresses given) : TODO
-static ATRESULT atcmd_connect(uint8_t nargs, char* argv[], void* odev) {
-        // Must have done a password login to be allowed to connect
-    if (!cfg_isPasswordOk()) {
-        return ATCMD_GENERR;
+// Check if connected to BLE
+static ATRESULT atcmd_checkconnect(uint8_t nargs, char* argv[], void* odev) {
+    if (comm_ble_isConnected()) {
+        wconsole_println(odev, "1");
+    } else {
+        wconsole_println(odev, "0");
     }
+    return ATCMD_PROCESSED;
+}
 
-    if (nargs==1) {
+// Request to cross-connect to another comm port
+// 1st Parameter indicates the device to connect to: 
+//  - U = physical uart (logically only from a remote BLE NUS service...) - this is also the default
+//  - NC = NUS remote client (must be already connected to us)
+//  - NS = NUS remote server (connection will be initiated, parameter 2 must indicate devAddr)
+static ATRESULT atcmd_connect(uint8_t nargs, char* argv[], void* odev) {
+
+    if (nargs==1 || (nargs==2 && argv[1][0]=='U')) {
+        // Must have done a password login to be allowed to connect if coming from remote BLE guy
+        if (!cfg_isPasswordOk()) {
+            return ATCMD_GENERR;
+        }
         // the sender is one side (assumed to be a remote BLE) and the comm UART is forced as the other side
         _ctx.passThru_txfn1 = (UART_TX_FN_T)odev;
         _ctx.passThru_txfn2 = &comm_uart_tx;
         // Setting these 2 attributes will mean that the pass-thru handling takes place in the at_process_line() method
-        wconsole_println(odev, "OK");
-    } else {
-        wconsole_println(odev, "ERROR");
-        wconsole_println(odev, "Not yet implemented");
+        return ATCMD_OK;    
     }
-    return ATCMD_OK;
+    if (nargs>=2) {
+        if (strncmp("NC", argv[1], 2)==0) {
+            // Must have BLE NUS client connected currently
+            if (comm_ble_isConnected()) {
+                _ctx.passThru_txfn1 = (UART_TX_FN_T)odev;
+                _ctx.passThru_txfn2 = &comm_ble_tx;
+                // Setting these 2 attributes will mean that the pass-thru handling takes place in the at_process_line() method
+                return ATCMD_OK;    
+            } else {
+                // don't connect when noone there to listen
+                return ATCMD_GENERR;
+            }
+        } else if (strncmp("NS", argv[1], 2)==0) {
+            wconsole_println(odev, "ERROR");
+            wconsole_println(odev, "Not yet implemented");
+            return ATCMD_BADARG;
+        }
+    }
+    return ATCMD_GENERR;
 }
 // And tear down the cross-connect
 static ATRESULT atcmd_disconnect(uint8_t nargs, char* argv[], void* odev) {
