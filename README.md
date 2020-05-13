@@ -1,6 +1,8 @@
 # Description
 
 This project is made to compile and use the BLE iBeacon + scanner Wyres firmware using GCC toolchain.
+Hardware is a Minew MS49SF2 module using a nRF51822-QFAA bluetooth chip.
+
 It uses the Nordic SDK/SoftDevice system:
  - SDK 12.3.0 (approx)
  - Softdevice S130 v2.0.1 (probably)
