@@ -3,7 +3,7 @@
 set OPENOCD=c:/soft/openocd-0.10.0
 ::openocd -f "./scripts/interface/stlink.cfg" -f "./scripts/target/nrf51.cfg" -c "init; halt; nrf51 mass_erase; program ./hexs/softdevice.hex verify; program ./outputs/%1 verify; flash fillw 0x000338A0 0x30303030 1; flash fillw 0x000338A4 0x%major_minor% 1; flash fillw 0x000338A8 0xFF0064EC 1; flash fillw 0x00033CA0 0x00000002 1; reset;shutdown"
 :: openocd limitation : scripts MUST use a full path not relative one?
-openocd -f %OPENOCD%/scripts/interface/stlink-v2.cfg -f %OPENOCD%/scripts/target/nrf51.cfg -c "init; halt; nrf51 mass_erase; program ../hexs/softdevice.hex verify; program ../outputs/%1.hex verify; reset;halt"
+openocd -f %OPENOCD%/scripts/interface/stlink-v2.cfg -f %OPENOCD%/scripts/target/nrf51.cfg -c "init; halt; nrf51 mass_erase; program ./hexs/softdevice.hex verify; program ./outputs/%1.hex verify; reset;halt"
 
 ::
 ::Command: flash erase_address [pad] [unlock] address length
