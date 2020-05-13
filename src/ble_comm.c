@@ -100,9 +100,8 @@ int comm_ble_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
     // check if disconnecting and ignore (as can't disconnect from uart...)
     if (data!=NULL)  {
         log_info("nus:send data to nus");
-        // Send to NUS : TODO do we need to cut it up into BLE_NUS_MAX_DATA_LEN sized blocks? just chop it off for now
+        // Send to NUS : TODO we need to cut it up into BLE_NUS_MAX_DATA_LEN sized blocks? just chop it off for now
         if (len>BLE_NUS_MAX_DATA_LEN) {
-            data[BLE_NUS_MAX_DATA_LEN]='\0';
             len = BLE_NUS_MAX_DATA_LEN;
         }
         uint32_t err_code = ble_nus_string_send(&_ctx.m_nus, data, len);
@@ -144,9 +143,11 @@ static void comm_ble_nus_data_handler(ble_nus_t * p_nus, uint8_t* p_data, uint16
     log_info("nus:rx data");
     for(int i=0;i<length;i++) {
         _ctx.rx_buf[_ctx.rx_index] = p_data[i];
-        if( (_ctx.rx_buf[_ctx.rx_index] == '\r') || (_ctx.rx_buf[_ctx.rx_index] == '\n') || (_ctx.rx_index >= (MAX_RX_LINE-1)) )
+        if( (_ctx.rx_buf[_ctx.rx_index] == '\r') || (_ctx.rx_buf[_ctx.rx_index] == '\n') || (_ctx.rx_index >= (MAX_RX_LINE-2)) )
         {
-            _ctx.rx_buf[_ctx.rx_index] = 0; // null terminate the data in buffer
+            _ctx.rx_buf[_ctx.rx_index] = '\n';  // make sure its got a LF on end
+            _ctx.rx_index++;
+            _ctx.rx_buf[_ctx.rx_index] = 0; // null terminate the data in buffer AFTER the \r or \n
             // And process
             at_process_input((char*)(&_ctx.rx_buf[0]), &comm_ble_tx);
             // reset our line buffer

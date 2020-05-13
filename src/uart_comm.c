@@ -94,9 +94,11 @@ static void uart_event_handler(app_uart_evt_t * p_event)
             while(app_uart_get(&_ctx.rx_buf[_ctx.rx_index])==NRF_SUCCESS) 
             {
                 // End of line? or buiffer full?
-                if( (_ctx.rx_buf[_ctx.rx_index] == '\r') || (_ctx.rx_buf[_ctx.rx_index] == '\n') || (_ctx.rx_index >= MAX_RX_LINE) )
+                if( (_ctx.rx_buf[_ctx.rx_index] == '\r') || (_ctx.rx_buf[_ctx.rx_index] == '\n') || (_ctx.rx_index >= (MAX_RX_LINE-2)) )
                 {
-                    _ctx.rx_buf[_ctx.rx_index+1] = 0; // null terminate the data in buffer (not overwriting the \r or \n though)
+                    _ctx.rx_buf[_ctx.rx_index] = '\n';  // make sure its got a LF on end
+                    _ctx.rx_index++;
+                    _ctx.rx_buf[_ctx.rx_index] = 0; // null terminate the data in buffer (not overwriting the \r or \n though)
                     // And process
                     at_process_input((char*)(&_ctx.rx_buf[0]), &comm_uart_tx);
                     // reset our line buffer to start
@@ -116,8 +118,9 @@ static void uart_event_handler(app_uart_evt_t * p_event)
         break;
  
         case APP_UART_FIFO_ERROR:
-            comm_uart_deinit();
-            start_reopen_timer();
+                // Information only, we'll cope!
+//            comm_uart_deinit();
+//            start_reopen_timer();
 //            APP_ERROR_HANDLER(p_event->data.error_code);
         break;
         

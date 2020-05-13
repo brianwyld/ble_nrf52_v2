@@ -684,6 +684,7 @@ static void advertising_setup(void)
         scanrsp.uuids_complete.p_uuids  = NULL;
     }
     scanrsp.name_type = BLE_ADVDATA_FULL_NAME;
+    scanrsp.short_name_len = 8;      // get at least id part (maj/min in hex)
     scanrsp.p_tx_power_level = &txPowerLevel;
 
     // Give both options for advert speed (the one used depends on whether isIBeaconning() is true or not)

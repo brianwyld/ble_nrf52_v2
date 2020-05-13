@@ -146,8 +146,8 @@ static void at_process_line(char* line, UART_TX_FN_T utx_fn) {
             // make end of string at white space
             *s='\0';
             s++;
-            // consume blank space or seperators
-            while(*s==' ' || *s=='=' || *s==',') {
+            // consume blank space but NOT explicit seperators (so AT ,,,,, still creates 6 args or 0 length...)
+            while(*s==' ') {
                 s++;
             }
             // If more string, then its the next element..
@@ -538,53 +538,25 @@ static ATRESULT atcmd_start_ib(uint8_t nargs, char* argv[], void* odev) {
         unsigned int extra;
         unsigned int interMS;
         int txpower;
-        // TODO allow an individual param to be ignored eg if it starts with *?
-        if (Util_scanhex(argv[1], 16, uuid)!=16) 
-//        if (sscanf(argv[1], "%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
-//                    &uuid[0],&uuid[1],&uuid[2],&uuid[3],&uuid[4],&uuid[5],&uuid[6],&uuid[7],
-//                    &uuid[8],&uuid[9],&uuid[10],&uuid[11],&uuid[12],&uuid[13],&uuid[14],&uuid[15])!=16) 
-        {
-            // oops
-            wconsole_println(odev, "ERROR");
-            wconsole_println(odev, "ERROR : failed to parse UUID [%s]", argv[1]);
-            return ATCMD_BADARG;
+        // any param can be ignored by making it empty eg AT+IB_START,,,,,,-10
+        if (Util_scanhex(argv[1], 16, uuid)==16) {
+            cfg_setUUID(uuid);
         }
-        if (sscanf(argv[2], "%04x", &major)!=1) 
-        {
-            wconsole_println(odev, "ERROR");
-            wconsole_println(odev, "ERROR : failed to parse major[%s]", argv[2]);
-            return ATCMD_BADARG;
+        if (sscanf(argv[2], "%04x", &major)==1) {
+            cfg_setMajor_Value(major);
         }
-        if (sscanf(argv[3], "%04x", &minor)!=1) 
-        {
-            wconsole_println(odev, "ERROR");
-            wconsole_println(odev, "Failed to parse minor[%s]", argv[3]);
-            return ATCMD_BADARG;
+        if (sscanf(argv[3], "%04x", &minor)==1) {
+            cfg_setMinor_Value(minor);
         }
-        if (sscanf(argv[4], "%02x", &extra)!=1) 
-        {
-            wconsole_println(odev, "ERROR");
-            wconsole_println(odev, "Failed to parse extra[%s]", argv[4]);
-            return ATCMD_BADARG;
+        if (sscanf(argv[4], "%02x", &extra)==1) {
+            cfg_setExtra_Value(extra);
         }
-        if (sscanf(argv[5], "%04x", &interMS)!=1) 
-        {
-            wconsole_println(odev, "ERROR");
-            wconsole_println(odev, "Failed to parse interval[%s]", argv[5]);
-            return ATCMD_BADARG;
+        if (sscanf(argv[5], "%04x", &interMS)==1) {
+            cfg_setADV_IND(interMS);
         }
-        if (sscanf(argv[6], "%d", &txpower)!=1) 
-        {
-            wconsole_println(odev, "ERROR");
-            wconsole_println(odev, "Failed to parse tx power[%s]", argv[6]);
-            return ATCMD_BADARG;
+        if (sscanf(argv[6], "%d", &txpower)==1) {
+            cfg_setTXPOWER_Level(txpower);
         }
-        cfg_setUUID(uuid);
-        cfg_setMajor_Value(major);
-        cfg_setMinor_Value(minor);
-        cfg_setExtra_Value(extra);
-        cfg_setADV_IND(interMS);
-        cfg_setTXPOWER_Level(txpower);
     }
     ibb_start();
     return ATCMD_OK;

@@ -16,8 +16,8 @@
 #ifndef FW_MINOR 
 #define FW_MINOR (0)
 #endif
-#define DEVICE_NAME_BASE             "Wyres"                                       /**< Name of device when for connection beacons. Will be included in the advertising data. */
-#define DEVICE_NAME_LEN             20      // Wyres_0000_0000
+#define DEVICE_NAME_BASE             "W"                                       /**< Name of device when for connection beacons. Will be included in the advertising data. */
+#define DEVICE_NAME_LEN             20      // 00000000_W
 #define PASSWORD_LEN    (4)
 #define MAGIC_CFG_SAVED (0x60671520)    // magic number meaning full saved config present in flash
 #define MAGIC_CFG_PROD (0x60671519)     // magic number meaning just production saved config present in flash
@@ -48,7 +48,7 @@ static struct {
     .major_value = 0xFFFF,
     .minor_value = 0xFFFF,
     .beacon_uuid_tab = {0xE2, 0xC5, 0x6D, 0xB5, 0xDF, 0xFB, 0x48, 0xD2, 0xB0, 0x60, 0xD0, 0xF5, 0xA7, 0x10, 0x96, 0xE0},
-    .nameAdv = "Wyres_FFFF_FFFF", 
+    .nameAdv = "FFFFFFFF_W", 
     .isConnectable=true,
     .isIBeaconning=false,
     .company_id = 0x004C, 
@@ -59,6 +59,11 @@ static struct {
 // Not in config
 static bool _isPasswordOK = false;
 
+// Refresh advertised name (eg when change maj/minor)
+// Note we put maj/min at front so can see it with short name of 8 chars
+static void makeNameAdv() {
+    sprintf(_ctx.nameAdv, "%04x%04x_%s", cfg_getMajor_Value(), cfg_getMinor_Value(), DEVICE_NAME_BASE);
+}
 /** Config handling
  */
 // Get config from NVM into _ctx
@@ -72,7 +77,7 @@ void cfg_init() {
         _ctx.major_value = hal_bsp_nvmRead16(4);
         _ctx.minor_value = hal_bsp_nvmRead16(6);
         // set default name
-        sprintf(_ctx.nameAdv, "%s_%04x_%04x", DEVICE_NAME_BASE, cfg_getMajor_Value(), cfg_getMinor_Value());
+        makeNameAdv();
         log_warn("initialised config from production flash setup [%04x,%04x]", _ctx.major_value, _ctx.minor_value);
     } else if (magic==MAGIC_CFG_SAVED) {
         // Proper saved config present
@@ -175,7 +180,7 @@ void cfg_setMinor_Value(uint16_t value)
 {
     if (value!=_ctx.minor_value) {
         _ctx.minor_value = value;
-        sprintf(_ctx.nameAdv, "%s_%04x_%04x", DEVICE_NAME_BASE, cfg_getMajor_Value(), cfg_getMinor_Value());
+        makeNameAdv();
         configUpdateRequest();
     }
 }
@@ -189,7 +194,7 @@ void cfg_setMajor_Value(uint16_t value)
 {
     if (value!=_ctx.major_value) {
         _ctx.major_value = value;
-        sprintf(_ctx.nameAdv, "%s_%04x_%04x", DEVICE_NAME_BASE, cfg_getMajor_Value(), cfg_getMinor_Value());
+        makeNameAdv();
         configUpdateRequest();
     }
 }
