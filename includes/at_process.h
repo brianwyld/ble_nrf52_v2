@@ -23,7 +23,8 @@ extern "C" {
 // process a input line of text, which was terminated by \r\n, and is terminated by \0
 // Output will be send to the given tx fn for processing
 void at_process_input(char* data, UART_TX_FN_T source_txfn);
-
+// process at cmd locally only
+void at_process_line(char* line, UART_TX_FN_T utx_fn);
 #ifdef __cplusplus
 }
 #endif

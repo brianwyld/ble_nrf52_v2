@@ -23,7 +23,9 @@ bool comm_uart_init(void);
 void comm_uart_deinit(void);
 // Tx line. returns number of bytes not sent due to flow control. 
 int comm_uart_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready);
-
+// Call this from main loop to check and process any pending rx data
+void comm_uart_processRX();
+void comm_uart_print_stats(PRINTF_FN_T printf, void* odev);
 #ifdef __cplusplus
 }
 #endif

@@ -16,6 +16,8 @@
 typedef int (*UART_TX_READY_FN_T)(void* txfn);
 // Output line with N characters (may be null terminated or not)
 typedef int (*UART_TX_FN_T)(uint8_t* output, int len, UART_TX_READY_FN_T txready);
+// A printf type fn that takes the uart tx fn to print to.
+typedef bool (*PRINTF_FN_T)(void* dev, const char* l, ...);
 
 /******************************GLOBAL FUNCTIONS********************************/
 

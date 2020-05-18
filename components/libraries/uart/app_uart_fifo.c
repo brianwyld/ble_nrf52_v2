@@ -59,15 +59,15 @@ static void uart_event_handler(nrf_drv_uart_event_t * p_event, void* p_context)
             }
 
             // Start new RX if size in buffer.
-            if (FIFO_LENGTH(m_rx_fifo) <= m_rx_fifo.buf_size_mask)
+//            if (FIFO_LENGTH(m_rx_fifo) <= m_rx_fifo.buf_size_mask)
             {
                 (void)nrf_drv_uart_rx(&app_uart_inst, rx_buffer, 1);
             }
-            else
-            {
-                // Overflow in RX FIFO.
-                m_rx_ovf = true;
-            }
+//            else
+//            {
+//                // Overflow in RX FIFO.
+//                m_rx_ovf = true;
+//            }
 
             break;
 

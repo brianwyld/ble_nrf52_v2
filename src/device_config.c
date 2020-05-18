@@ -307,7 +307,7 @@ int cfg_getByKey(uint16_t key, uint8_t* vp, int maxlen) {
         }
         case DCFG_KEY_PASS: {
             int l = (maxlen<PASSWORD_LEN ? maxlen : PASSWORD_LEN);
-            memcpy(vp, _ctx.beacon_uuid_tab, l);
+            memcpy(vp, _ctx.passwordTab, l);
             return PASSWORD_LEN;
         }
         default:
@@ -350,6 +350,11 @@ int cfg_setByKey(uint16_t key, uint8_t* vp, int len) {
             int l = (len<UUID128_SIZE ? len : UUID128_SIZE);
             memcpy(_ctx.beacon_uuid_tab, vp, l);
             return UUID128_SIZE;
+        }
+        case DCFG_KEY_PASS: {
+            int l = (len<PASSWORD_LEN ? len : PASSWORD_LEN);
+            memcpy(_ctx.passwordTab, vp, l);
+            return PASSWORD_LEN;
         }
         default:
             return 0;       // not found

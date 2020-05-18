@@ -37,7 +37,7 @@ extern "C" {
 #define UART0_CTS_PIN_NUMBER (CTS_PIN_NUMBER)
 
 #define UART_TX_BUF_SIZE        256                             /**< UART TX buffer size. MUST BE POWER OF 2 */
-#define UART_RX_BUF_SIZE        64                             /**< UART RX buffer size. MUST BE POWER OF 2 */
+#define UART_RX_BUF_SIZE        128                             /**< UART RX buffer size. MUST BE POWER OF 2 */
 
 bool hal_bsp_nvmLock();
 bool hal_bsp_nvmUnlock();

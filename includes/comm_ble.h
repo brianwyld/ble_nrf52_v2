@@ -27,6 +27,7 @@ bool comm_ble_isConnected();
 // Tx line. returns number of bytes not sent due to flow control. 
 int comm_ble_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready);
 void comm_ble_dispatch(ble_evt_t * p_ble_evt);
+void comm_ble_print_stats(PRINTF_FN_T printf, void* odev);
 
 #ifdef __cplusplus
 }

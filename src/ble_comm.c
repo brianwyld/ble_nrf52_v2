@@ -25,6 +25,12 @@ static struct {
     uint8_t rx_buf[MAX_RX_LINE];
     uint8_t rx_index;
     UART_TX_READY_FN_T tx_ready_fn;     // in case caller wants to be told
+    uint32_t rxC;
+    uint32_t rxL;
+    uint32_t txC;
+    uint32_t txL;
+    uint32_t txLfc;
+    uint32_t txLemp;
 } _ctx;
 
 // predecs
@@ -100,17 +106,33 @@ int comm_ble_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
     // check if disconnecting and ignore (as can't disconnect from uart...)
     if (data!=NULL)  {
         log_info("nus:send data to nus");
-        // Send to NUS : TODO we need to cut it up into BLE_NUS_MAX_DATA_LEN sized blocks? just chop it off for now
-        if (len>BLE_NUS_MAX_DATA_LEN) {
-            len = BLE_NUS_MAX_DATA_LEN;
-        }
-        uint32_t err_code = ble_nus_string_send(&_ctx.m_nus, data, len);
-//        err_code = ble_nus_c_string_send(&_ctx.m_nus_c, data, len);
-        if (err_code == NRF_ERROR_INVALID_STATE) {
-            // NUS tells us we are disconnected
-            comm_ble_remote_disconnected();
+        // Send to NUS : we need to cut it up into BLE_NUS_MAX_DATA_LEN sized blocks
+        int off = 0;
+        do {
+            // Length for this block
+            int tlen = ((len-off)>BLE_NUS_MAX_DATA_LEN)?BLE_NUS_MAX_DATA_LEN:(len-off);
+            if (tlen>0) {
+                uint32_t err_code = ble_nus_string_send(&_ctx.m_nus, &data[off], tlen);
+        //        err_code = ble_nus_c_string_send(&_ctx.m_nus_c, data, len);
+                if (err_code == NRF_ERROR_INVALID_STATE) {
+                    // NUS tells us we are disconnected
+                    comm_ble_remote_disconnected();
+                    return len-off;     // this is what is left
+                } else if (err_code == BLE_ERROR_NO_TX_PACKETS) {
+                    _ctx.txLfc++;
+                    // saturated the tx Q! drop the rest of the output but don't drop connection
+                    return len-off;
+                } else {
+                    APP_ERROR_CHECK(err_code);
+                    _ctx.txC+=tlen;
+                }
+                off+=tlen;
+            }
+        } while (off<len);
+        if (len>1) {
+            _ctx.txL++;
         } else {
-            APP_ERROR_CHECK(err_code);
+            _ctx.txLemp++;
         }
     } else {
         log_info("nus:disconnect request");
@@ -122,6 +144,10 @@ int comm_ble_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
 
 void comm_ble_dispatch(ble_evt_t * p_ble_evt) {
     ble_nus_on_ble_evt(&_ctx.m_nus, p_ble_evt);
+}
+
+void comm_ble_print_stats(PRINTF_FN_T printf, void* odev) {
+    (*printf)(odev, "B:%d,%d,%d,%d,%d, %d", _ctx.rxC, _ctx.rxL, _ctx.txC, _ctx.txL, _ctx.txLfc, _ctx.txLemp);
 }
 /**@brief Function for handling the data from the Nordic UART Service.
  *
@@ -143,18 +169,26 @@ static void comm_ble_nus_data_handler(ble_nus_t * p_nus, uint8_t* p_data, uint16
     log_info("nus:rx data");
     for(int i=0;i<length;i++) {
         _ctx.rx_buf[_ctx.rx_index] = p_data[i];
-        if( (_ctx.rx_buf[_ctx.rx_index] == '\r') || (_ctx.rx_buf[_ctx.rx_index] == '\n') || (_ctx.rx_index >= (MAX_RX_LINE-2)) )
-        {
-            _ctx.rx_buf[_ctx.rx_index] = '\n';  // make sure its got a LF on end
-            _ctx.rx_index++;
-            _ctx.rx_buf[_ctx.rx_index] = 0; // null terminate the data in buffer AFTER the \r or \n
-            // And process
-            at_process_input((char*)(&_ctx.rx_buf[0]), &comm_ble_tx);
-            // reset our line buffer
-            _ctx.rx_index = 0;
-            // Continue for rest of data in input
-        } else {
-            _ctx.rx_index++;
+        // Don't take nulls
+        if (_ctx.rx_buf[_ctx.rx_index]!=0) {
+            _ctx.rxC++;
+            if( (_ctx.rx_buf[_ctx.rx_index] == '\r') || (_ctx.rx_buf[_ctx.rx_index] == '\n') || (_ctx.rx_index >= (MAX_RX_LINE-2)) )
+            {
+                // Don't process empty lines (eg the \n from people who do "<blah>\r\n" -> "<blah>\n","\n" after processing) 
+                if (_ctx.rx_index>0) {
+                    _ctx.rx_buf[_ctx.rx_index] = '\n';  // make sure its got a LF on end
+                    _ctx.rx_index++;
+                    _ctx.rx_buf[_ctx.rx_index] = 0; // null terminate the data in buffer AFTER the \r or \n
+                    // And process
+                    at_process_input((char*)(&_ctx.rx_buf[0]), &comm_ble_tx);
+                    _ctx.rxL++;
+                }
+                // reset our line buffer
+                _ctx.rx_index = 0;
+                // Continue for rest of data in input
+            } else {
+                _ctx.rx_index++;
+            }
         }
     }
 }

@@ -16,14 +16,20 @@
 
 #define COMM_UART_NB    (0)
 #define COMM_UART_BAUDRATE  (UART_BAUDRATE_BAUDRATE_Baud115200)     // MUST USE THE CONSTANT NOT A SIMPLE VALUE
-#define MAX_RX_LINE (60)
+#define MAX_RX_LINE (100)            // AT+IB_START E2C56DB5DFFB48D2B060D0F5A71096E0,8201,135C,00,0200,-10   is longest command and is 67
 
 static struct {
     int uartNb;
     bool isOpen;
+    bool rxDataReady;
     uint8_t rx_buf[MAX_RX_LINE+2];      // wriggle space for the \0
     uint8_t rx_index;
     UART_TX_READY_FN_T tx_ready_fn;     // in case caller wants to be told
+    uint32_t rxC;
+    uint32_t rxL;
+    uint32_t txL;
+    uint32_t rxFerr;
+    uint32_t rxLerr;
 } _ctx;
 
 // predecs
@@ -46,9 +52,10 @@ int comm_uart_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
         _ctx.tx_ready_fn = tx_ready;        // in case of..
         // check if disconnecting 
         if (data!=NULL)  {
+            _ctx.txL++;
             return (hal_bsp_uart_tx(_ctx.uartNb, data, len));
         } else {
-            // can't disconnect from uart... but let them know
+            // can't disconnect from uart... but let them know on the other end
             return (hal_bsp_uart_tx(_ctx.uartNb, "AT+DISC\r\n", 10));
         }
         return 0;       // ok mate
@@ -57,6 +64,42 @@ int comm_uart_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
         return -1;
     }
 }
+
+// Call this from main loop to check if uart has input data to process
+void comm_uart_processRX() {
+    // Read all the bytes we can and pass any complete lines to the at command processor
+    while(app_uart_get(&_ctx.rx_buf[_ctx.rx_index])==NRF_SUCCESS) 
+    {
+        // Don't take nulls
+        if (_ctx.rx_buf[_ctx.rx_index]!=0) {
+            _ctx.rxC++;
+            // End of line? or buiffer full?
+            if( (_ctx.rx_buf[_ctx.rx_index] == '\r') || (_ctx.rx_buf[_ctx.rx_index] == '\n') || (_ctx.rx_index >= (MAX_RX_LINE-2)) )
+            {
+                // Don't process empty lines (eg the \n from people who do "<blah>\r\n" -> "<blah>\n","\n" after processing) 
+                if (_ctx.rx_index>0) {
+                    _ctx.rx_buf[_ctx.rx_index] = '\n';  // make sure its got a LF on end
+                    _ctx.rx_index++;
+                    _ctx.rx_buf[_ctx.rx_index] = 0; // null terminate the data in buffer (not overwriting the \r or \n though)
+                    // And process
+                    at_process_input((char*)(&_ctx.rx_buf[0]), &comm_uart_tx);
+                    _ctx.rxL++;
+                }
+                // reset our line buffer to start
+                _ctx.rx_index = 0;
+                // Continue for rest of data in input
+            } else {
+                _ctx.rx_index++;
+            }
+        }
+    }
+    _ctx.rxDataReady = false;       // as we ate all the data
+}
+
+void comm_uart_print_stats(PRINTF_FN_T printf, void* odev) {
+    (*printf)(odev, "U:%d,%d,-,%d,%d,%d", _ctx.rxC, _ctx.rxL, _ctx.txL, _ctx.rxFerr, _ctx.rxLerr);
+}
+
 
 // handler for reinit timer
 static void reinit_uart_timeout_handler(void * p_context)
@@ -80,9 +123,8 @@ static void start_reopen_timer() {
 /**@brief   Function for handling app_uart events.
  *
  * @details This function will receive a single character from the app_uart module and append it to
- *          a string. The string will be be sent over BLE when the last character received was a
- *          'new line' i.e '\r\n' (hex 0x0D) or if the string has reached a length of
- *          @ref NUS_MAX_DATA_LENGTH.
+ *          a string. The string will be be prcoessed when the last character received was a
+ *          'new line' i.e '\n' (hex 0x0A) or carriage return (\r 0x0D) or if the string has reached the end of the rx buffer
  */
 static void uart_event_handler(app_uart_evt_t * p_event)
 {    
@@ -90,24 +132,8 @@ static void uart_event_handler(app_uart_evt_t * p_event)
     {
         case APP_UART_DATA_READY:
         {
-            // Read all the bytes we can 
-            while(app_uart_get(&_ctx.rx_buf[_ctx.rx_index])==NRF_SUCCESS) 
-            {
-                // End of line? or buiffer full?
-                if( (_ctx.rx_buf[_ctx.rx_index] == '\r') || (_ctx.rx_buf[_ctx.rx_index] == '\n') || (_ctx.rx_index >= (MAX_RX_LINE-2)) )
-                {
-                    _ctx.rx_buf[_ctx.rx_index] = '\n';  // make sure its got a LF on end
-                    _ctx.rx_index++;
-                    _ctx.rx_buf[_ctx.rx_index] = 0; // null terminate the data in buffer (not overwriting the \r or \n though)
-                    // And process
-                    at_process_input((char*)(&_ctx.rx_buf[0]), &comm_uart_tx);
-                    // reset our line buffer to start
-                    _ctx.rx_index = 0;
-                    // Continue for rest of data in input
-                } else {
-                    _ctx.rx_index++;
-                }
-            }
+            _ctx.rxDataReady = true;
+            break;
         }
         break;
  
@@ -115,6 +141,10 @@ static void uart_event_handler(app_uart_evt_t * p_event)
             // This is for errors such as parity, framing, overrun or break (all 0 on the line)
             // None of these are fatal so we can ignore them
 //            APP_ERROR_HANDLER(p_event->data.error_communication);
+            // but we will flush input buffer / input fifo
+            _ctx.rxLerr++;
+            _ctx.rx_index = 0;
+            app_uart_flush();
         break;
  
         case APP_UART_FIFO_ERROR:
@@ -122,6 +152,7 @@ static void uart_event_handler(app_uart_evt_t * p_event)
 //            comm_uart_deinit();
 //            start_reopen_timer();
 //            APP_ERROR_HANDLER(p_event->data.error_code);
+            _ctx.rxFerr++;
         break;
         
         case APP_UART_TX_EMPTY:

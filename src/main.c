@@ -845,7 +845,8 @@ int main(void)
         }
         // Check if flash needs updating
         cfg_writeCheck();
-        
+        // Check if UART has data to process
+        comm_uart_processRX();
         // Go in lowpower only if flash isn't busy
         if(!app_isFlashBusy())
         {

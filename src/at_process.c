@@ -38,7 +38,6 @@ typedef struct {
 
 // Write output to console on given device
 static bool wconsole_println(void* udev, const char* l, ...);
-static void at_process_line(char* line, UART_TX_FN_T utx_fn);
 
 // predec at command handlers
 static ATRESULT atcmd_hello(uint8_t nargs, char* argv[], void* odev);
@@ -59,6 +58,7 @@ static ATRESULT atcmd_stop_ib(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_enable_conn(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_disable_conn(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_push(uint8_t nargs, char* argv[], void* odev);
+static ATRESULT atcmd_debug_stats(uint8_t nargs, char* argv[], void* odev);
 
 static ATCMD_DEF_t ATCMDS[] = {
     { .cmd="AT", .desc="Wakeup", .fn=atcmd_hello},
@@ -80,11 +80,12 @@ static ATCMD_DEF_t ATCMDS[] = {
     { .cmd="AT+CONN_EN", .desc="Enable remote connection", .fn=atcmd_enable_conn},
     { .cmd="AT+CONN_DIS", .desc="Disable remote connection", .fn=atcmd_disable_conn},
     { .cmd="AT+PUSH", .desc="Push scan data", .fn=atcmd_push},
+    { .cmd="AT+D?", .desc="Output debug stats", .fn=atcmd_debug_stats},
 };
 
 // Our local data context
 static struct {
-    uint8_t txbuf[MAX_TXSZ+1];
+    uint8_t txbuf[MAX_TXSZ+3];          // space for terminating \r\n\0
     UART_TX_FN_T passThru_txfn1;        // If in passthru, this is output to one side
     UART_TX_FN_T passThru_txfn2;        // and this the other
     uint8_t ncmds;
@@ -99,40 +100,40 @@ static struct {
 // Deal with received data : line string either of max length or \r or \n terminated. utx_fn is the fn to send data back to this originator
 // If in 'pass-thru' mode the data is just copied to the other guy (see AT+CONN) unless we find a "AT+DISC" in either direction
 void at_process_input(char* data, UART_TX_FN_T source_txfn) {
-    if (_ctx.passThru_txfn1!=NULL && _ctx.passThru_txfn2!=NULL) {
-        // see which is the other guy..
-        UART_TX_FN_T dest_txfn = _ctx.passThru_txfn1;  
-        if (_ctx.passThru_txfn1==source_txfn) {
-            // ah nope its the other
-            dest_txfn = _ctx.passThru_txfn2;
-        }
-        // check for disconnect from either side
-        if (strncmp("AT+DISC", data,7)==0) {
-            (*dest_txfn)(NULL, -1, NULL);        // Tell remote dest we're done
-            (*source_txfn)(NULL, -1, NULL);       // and confirm to source
-            _ctx.passThru_txfn1 = NULL;      // ie disconnect
-            _ctx.passThru_txfn2 = NULL;      // ie disconnect
-        } else if (strncmp("AT+CONN?", data,8)==0) {
-            // connection check (aka base wconsole checking if anyone listening)
-            // we are (obviously) cross connected -> state 2 (0=no ble client, 1=ble client but not cross-connected)
-            wconsole_println(source_txfn, "2");
-        } else {
-            // Give it all to dest
-            if ((*dest_txfn)((uint8_t*)data, strlen(data), NULL)<0) {
-                // broken
-                (*source_txfn)(NULL, -1, NULL);        // tell guy who sent me data
-                _ctx.passThru_txfn1 = NULL;      // ie disconnect
-                _ctx.passThru_txfn2 = NULL;      // ie disconnect
+    int dlen = strlen(data);
+    if (dlen>1) {
+        if (_ctx.passThru_txfn1!=NULL && _ctx.passThru_txfn2!=NULL) {
+            // see which is the other guy..
+            UART_TX_FN_T dest_txfn = _ctx.passThru_txfn1;  
+            if (_ctx.passThru_txfn1==source_txfn) {
+                // ah nope its the other
+                dest_txfn = _ctx.passThru_txfn2;
             }
+            // Check if command is one that must be processed locally for correct result
+            // check for disconnect from either side, for a who (used as uart check) or the cross-connection status check
+            if (strncmp("AT+DISC", data,7)==0  || strncmp("AT+WHO", data,6)==0 || strncmp("AT+CONN?", data,8)==0 || strncmp("AT+D?", data,5)==0) {
+                // process it locally as AT command
+                at_process_line(data, source_txfn);
+            } else {
+                // Give it all to dest
+                if ((*dest_txfn)((uint8_t*)data, dlen, NULL)<0) {
+                    // broken
+                    (*source_txfn)(NULL, -1, NULL);        // tell guy who sent me data
+                    _ctx.passThru_txfn1 = NULL;      // ie disconnect
+                    _ctx.passThru_txfn2 = NULL;      // ie disconnect
+                }
+            }
+        } else {
+            // process it locally as AT command
+            at_process_line(data, source_txfn);
         }
     } else {
-        // process it locally as AT command
-        at_process_line(data, source_txfn);
+        // brokenness
     }
 }
 
 //Process an input line terminated by \0, and write any output back to the given tx fn
-static void at_process_line(char* line, UART_TX_FN_T utx_fn) {
+void at_process_line(char* line, UART_TX_FN_T utx_fn) {
     // parse line into : command, args
     char* els[MAX_ARGS];
     char* s = line;
@@ -206,7 +207,7 @@ static ATRESULT atcmd_hello(uint8_t nargs, char* argv[], void* odev) {
 // Return decimal integer with firmware version
 static ATRESULT atcmd_who(uint8_t nargs, char* argv[], void* odev) {
     wconsole_println(odev, "%d", (((cfg_getFWMajor() & 0xFF)<<8) + (cfg_getFWMinor() & 0xff)));
-    return ATCMD_OK;
+    return ATCMD_PROCESSED;     // don't need to says ok
 }
 
 static ATRESULT atcmd_push(uint8_t nargs, char* argv[], void* odev) {
@@ -393,9 +394,11 @@ static ATRESULT atcmd_setcfg(uint8_t nargs, char* argv[], void* odev) {
     return ATCMD_OK;
 }
 
-// Check if connected to BLE
+// Check if connected to BLE (0=no, 1=yes but not cross, 2=cross)
 static ATRESULT atcmd_checkconnect(uint8_t nargs, char* argv[], void* odev) {
-    if (comm_ble_isConnected()) {
+    if (_ctx.passThru_txfn1!=NULL && _ctx.passThru_txfn2!=NULL) {
+        wconsole_println(odev, "2");
+    } else if (comm_ble_isConnected()) {
         wconsole_println(odev, "1");
     } else {
         wconsole_println(odev, "0");
@@ -445,18 +448,13 @@ static ATRESULT atcmd_connect(uint8_t nargs, char* argv[], void* odev) {
 static ATRESULT atcmd_disconnect(uint8_t nargs, char* argv[], void* odev) {
     // Are we connected currently?
     if (_ctx.passThru_txfn1!=NULL && _ctx.passThru_txfn2!=NULL) {
-        // yes, tell disconnect to other guy
-        if (_ctx.passThru_txfn1==(UART_TX_FN_T)odev) {
-            (*_ctx.passThru_txfn2)(NULL, -1, NULL);       // ie disconnected
-        } else {
-            (*_ctx.passThru_txfn1)(NULL, -1, NULL);       // ie disconnected
-        }
+        (*_ctx.passThru_txfn1)(NULL, -1, NULL);        // Tell remote dest we're done
+        (*_ctx.passThru_txfn2)(NULL, -1, NULL);       // and confirm to source
         _ctx.passThru_txfn1 = NULL;
         _ctx.passThru_txfn2 = NULL;
-        wconsole_println(odev, "OK");
     } else {
-        wconsole_println(odev, "ERROR");
         wconsole_println(odev, "Not connected");
+        return ATCMD_GENERR;
     }
 //    sd_ble_gap_disconnect(m_conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
     return ATCMD_OK;
@@ -574,6 +572,11 @@ static ATRESULT atcmd_disable_conn(uint8_t nargs, char* argv[], void* odev) {
     cfg_setConnectable(false);
     return ATCMD_OK;
 }
+static ATRESULT atcmd_debug_stats(uint8_t nargs, char* argv[], void* odev) {
+    comm_ble_print_stats(wconsole_println, odev);
+    comm_uart_print_stats(wconsole_println, odev);
+    return ATCMD_PROCESSED;
+}
 
 // internal processing
 static bool wconsole_println(void* dev, const char* l, ...) {
@@ -583,16 +586,15 @@ static bool wconsole_println(void* dev, const char* l, ...) {
     va_start(vl, l);
     vsprintf((char*)&_ctx.txbuf[0], l, vl);
     int len = strlen((const char*)&_ctx.txbuf[0]);  //, MAX_TXSZ);        why no strnlen in gcc libc??
-    if ((len)>=MAX_TXSZ) {
+    if (len>=MAX_TXSZ) {
         // oops might just have broken stuff...
-        _ctx.txbuf[MAX_TXSZ-1] = '\0';
+        len = MAX_TXSZ-1;
         ret = false;        // caller knows there was an issue
-    } else {
-        _ctx.txbuf[len]='\n';
-        _ctx.txbuf[len+1]='\r';
-        _ctx.txbuf[len+2]='\0';
-        len+=3;
     }
+    _ctx.txbuf[len]='\n';
+    _ctx.txbuf[len+1]='\r';
+    _ctx.txbuf[len+2]=0;
+    len+=2;     // Don't send the null byte!
     if (utx_fn!=NULL) {
         int res = (*utx_fn)(&_ctx.txbuf[0], len, NULL);
         if (res!=0) {       // Error or flow control
