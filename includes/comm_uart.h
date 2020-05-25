@@ -19,7 +19,7 @@
 extern "C" {
 #endif
 
-bool comm_uart_init(void);
+bool comm_uart_init();
 void comm_uart_deinit(void);
 // Tx line. returns number of bytes not sent due to flow control. 
 int comm_uart_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready);

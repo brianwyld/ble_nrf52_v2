@@ -35,6 +35,7 @@
 #include "ble_advdata.h"
 #include "ble_advertising.h"
 #include "nrf_delay.h"
+#include "nrf_drv_gpiote.h"
 
 #include "timer_watchdog.h"
 
@@ -809,8 +810,15 @@ bool app_isFlashBusy() {
 int main(void)
 {
     system_init();
+
+    // Setup gpio
+    uint32_t err_code;
+    if(!nrf_drv_gpiote_is_init())
+    {
+        err_code = nrf_drv_gpiote_init();
+    }
     // Init uart asap in case using for logs also
-    comm_uart_init(); // REV B invert TX RX for board//
+    comm_uart_init(); 
 
 #ifdef RELEASE_BUILD
     wlog_init(-1);      // replace by 0 to get logs on uart

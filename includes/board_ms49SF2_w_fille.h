@@ -58,6 +58,9 @@ extern "C" {
 #define BSP_BUTTON_2   BUTTON_3
 #define BSP_BUTTON_3   BUTTON_4
 
+#define BSP_VCCUART     12
+#define BSP_EXT_IO      8
+
 #define RX_PIN_NUMBER  16
 #define TX_PIN_NUMBER  15
 #define CTS_PIN_NUMBER UART_PIN_DISCONNECTED

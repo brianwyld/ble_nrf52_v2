@@ -24,6 +24,9 @@
 #include "comm_uart.h"
 #include "comm_ble.h"
 
+#include "nrf_drv_gpiote.h"
+#include "bsp_minew_nrf51.h"
+
 #define MAX_TXSZ (100)
 #define MAX_ARGS (8)
 
@@ -58,6 +61,8 @@ static ATRESULT atcmd_stop_ib(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_enable_conn(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_disable_conn(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_push(uint8_t nargs, char* argv[], void* odev);
+static ATRESULT atcmd_out(uint8_t nargs, char* argv[], void* odev);
+static ATRESULT atcmd_in(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_debug_stats(uint8_t nargs, char* argv[], void* odev);
 
 static ATCMD_DEF_t ATCMDS[] = {
@@ -81,6 +86,8 @@ static ATCMD_DEF_t ATCMDS[] = {
     { .cmd="AT+CONN_DIS", .desc="Disable remote connection", .fn=atcmd_disable_conn},
     { .cmd="AT+PUSH", .desc="Push scan data", .fn=atcmd_push},
     { .cmd="AT+D?", .desc="Output debug stats", .fn=atcmd_debug_stats},
+    { .cmd="AT+O", .desc="Set output state", .fn=atcmd_out},
+    { .cmd="AT+I", .desc="Get input state", .fn=atcmd_in},
 };
 
 // Our local data context
@@ -575,6 +582,27 @@ static ATRESULT atcmd_disable_conn(uint8_t nargs, char* argv[], void* odev) {
 static ATRESULT atcmd_debug_stats(uint8_t nargs, char* argv[], void* odev) {
     comm_ble_print_stats(wconsole_println, odev);
     comm_uart_print_stats(wconsole_println, odev);
+    return ATCMD_PROCESSED;
+}
+static ATRESULT atcmd_out(uint8_t nargs, char* argv[], void* odev) {
+    if (nargs<3) {
+        return ATCMD_GENERR;
+    }
+    int pin = atoi(argv[1]);
+    if( argv[2][0]=='0') {
+        nrf_drv_gpiote_out_clear(pin);
+    } else {
+        nrf_drv_gpiote_out_set(pin);
+    }
+    return ATCMD_OK;
+}
+static ATRESULT atcmd_in(uint8_t nargs, char* argv[], void* odev) {
+    if (nargs<2) {
+        return ATCMD_GENERR;
+    }
+    int pin = atoi(argv[1]);
+    wconsole_println(odev, "Input[%d] is [%s]", pin, nrf_drv_gpiote_in_is_set(pin)?"HIGH":"LOW");
+    wconsole_println(odev, "%d", nrf_drv_gpiote_in_is_set(pin)?1:0);
     return ATCMD_PROCESSED;
 }
 

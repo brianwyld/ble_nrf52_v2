@@ -5,6 +5,7 @@
 #include <inttypes.h>
 
 #include <stdio.h>
+#include "nrf_drv_gpiote.h"
 
 #include "app_uart.h"
 
@@ -34,12 +35,20 @@ static struct {
 
 // predecs
 static void uart_event_handler(app_uart_evt_t * p_event);
+static void uart_gpio_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action);
+static bool uart_gpio_init();
 
 /**@brief Function for initializing the UART.
  */
-bool comm_uart_init(void) {
+bool comm_uart_init() {
     _ctx.uartNb = COMM_UART_NB;
-    _ctx.isOpen = hal_bsp_uart_init(_ctx.uartNb, COMM_UART_BAUDRATE, uart_event_handler);
+//    _ctx.isOpen = hal_bsp_uart_init(_ctx.uartNb, COMM_UART_BAUDRATE, uart_event_handler);
+
+    // TODO need way to decide if io input to decide if uart is to be enabled (revE board only)
+    // setup input on pin X, used to signal remote end wants to talk or not
+    uart_gpio_init();
+    // Check if uart is initialled running or not
+    uart_gpio_handler(0,0);     // as though had a vcc_uart state change
     return _ctx.isOpen;
 }
 
@@ -56,7 +65,7 @@ int comm_uart_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
             return (hal_bsp_uart_tx(_ctx.uartNb, data, len));
         } else {
             // can't disconnect from uart... but let them know on the other end
-            return (hal_bsp_uart_tx(_ctx.uartNb, "AT+DISC\r\n", 10));
+            return (hal_bsp_uart_tx(_ctx.uartNb, (uint8_t*)"AT+DISC\r\n", 10));
         }
         return 0;       // ok mate
     } else {
@@ -67,33 +76,35 @@ int comm_uart_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
 
 // Call this from main loop to check if uart has input data to process
 void comm_uart_processRX() {
-    // Read all the bytes we can and pass any complete lines to the at command processor
-    while(app_uart_get(&_ctx.rx_buf[_ctx.rx_index])==NRF_SUCCESS) 
-    {
-        // Don't take nulls
-        if (_ctx.rx_buf[_ctx.rx_index]!=0) {
-            _ctx.rxC++;
-            // End of line? or buiffer full?
-            if( (_ctx.rx_buf[_ctx.rx_index] == '\r') || (_ctx.rx_buf[_ctx.rx_index] == '\n') || (_ctx.rx_index >= (MAX_RX_LINE-2)) )
-            {
-                // Don't process empty lines (eg the \n from people who do "<blah>\r\n" -> "<blah>\n","\n" after processing) 
-                if (_ctx.rx_index>0) {
-                    _ctx.rx_buf[_ctx.rx_index] = '\n';  // make sure its got a LF on end
+    if (_ctx.isOpen) {
+        // Read all the bytes we can and pass any complete lines to the at command processor
+        while(app_uart_get(&_ctx.rx_buf[_ctx.rx_index])==NRF_SUCCESS) 
+        {
+            // Don't take nulls
+            if (_ctx.rx_buf[_ctx.rx_index]!=0) {
+                _ctx.rxC++;
+                // End of line? or buiffer full?
+                if( (_ctx.rx_buf[_ctx.rx_index] == '\r') || (_ctx.rx_buf[_ctx.rx_index] == '\n') || (_ctx.rx_index >= (MAX_RX_LINE-2)) )
+                {
+                    // Don't process empty lines (eg the \n from people who do "<blah>\r\n" -> "<blah>\n","\n" after processing) 
+                    if (_ctx.rx_index>0) {
+                        _ctx.rx_buf[_ctx.rx_index] = '\n';  // make sure its got a LF on end
+                        _ctx.rx_index++;
+                        _ctx.rx_buf[_ctx.rx_index] = 0; // null terminate the data in buffer (not overwriting the \r or \n though)
+                        // And process
+                        at_process_input((char*)(&_ctx.rx_buf[0]), &comm_uart_tx);
+                        _ctx.rxL++;
+                    }
+                    // reset our line buffer to start
+                    _ctx.rx_index = 0;
+                    // Continue for rest of data in input
+                } else {
                     _ctx.rx_index++;
-                    _ctx.rx_buf[_ctx.rx_index] = 0; // null terminate the data in buffer (not overwriting the \r or \n though)
-                    // And process
-                    at_process_input((char*)(&_ctx.rx_buf[0]), &comm_uart_tx);
-                    _ctx.rxL++;
                 }
-                // reset our line buffer to start
-                _ctx.rx_index = 0;
-                // Continue for rest of data in input
-            } else {
-                _ctx.rx_index++;
             }
         }
+        _ctx.rxDataReady = false;       // as we ate all the data
     }
-    _ctx.rxDataReady = false;       // as we ate all the data
 }
 
 void comm_uart_print_stats(PRINTF_FN_T printf, void* odev) {
@@ -105,7 +116,7 @@ void comm_uart_print_stats(PRINTF_FN_T printf, void* odev) {
 static void reinit_uart_timeout_handler(void * p_context)
 {
     if (_ctx.isOpen==false) {
-        comm_uart_init();
+        comm_uart_init(false);
     } // else ignore
 }
 
@@ -165,6 +176,47 @@ static void uart_event_handler(app_uart_evt_t * p_event)
         default:
         break;
     }
+}
+
+static bool uart_gpio_init() {
+    uint32_t err_code;
+    nrf_drv_gpiote_out_config_t led1_config = GPIOTE_CONFIG_OUT_SIMPLE(false);
+    err_code = nrf_drv_gpiote_out_init(BSP_LED_0, &led1_config);
+    if (err_code!=NRF_SUCCESS) {
+        return false;
+    }
+    nrf_drv_gpiote_out_config_t led2_config = GPIOTE_CONFIG_OUT_SIMPLE(false);
+    err_code = nrf_drv_gpiote_out_init(BSP_LED_1, &led2_config);
+    if (err_code!=NRF_SUCCESS) {
+        return false;
+    }
+    nrf_drv_gpiote_in_config_t vccuart_config = GPIOTE_CONFIG_IN_SENSE_TOGGLE(false);
+    vccuart_config.pull = NRF_GPIO_PIN_PULLDOWN;
+    err_code = nrf_drv_gpiote_in_init(BSP_VCCUART, &vccuart_config, uart_gpio_handler);
+    if (err_code!=NRF_SUCCESS) {
+        return false;
+    }
+    // Must enable 'event' for input io to be seen
+    nrf_drv_gpiote_in_event_enable(BSP_VCCUART, true);
+    return true;
+}
+
+// Handle level change on the input IO used to enable/disable uart
+static void uart_gpio_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
+    // Get current state of enable pin
+#ifdef BSP_VCCUART
+    bool state = nrf_drv_gpiote_in_is_set(BSP_VCCUART);
+    if (state==false) {
+        _ctx.isOpen = false;
+        hal_bsp_uart_deinit(_ctx.uartNb);
+        nrf_drv_gpiote_out_clear(BSP_LED_0);
+    } else {
+        _ctx.isOpen = hal_bsp_uart_init(_ctx.uartNb, COMM_UART_BAUDRATE, uart_event_handler);
+        nrf_drv_gpiote_out_set(BSP_LED_0);
+    }
+#else
+    _ctx.isOpen = hal_bsp_uart_init(_ctx.uartNb, COMM_UART_BAUDRATE, uart_event_handler);
+#endif
 }
 
 /* to get libc to be ok */
