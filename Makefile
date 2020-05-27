@@ -7,6 +7,8 @@ SPECIFIC_REV   =
 # if not passed on command line
 VER_MAJ?=2
 VER_MIN?=0
+# card types : 1-5 = revA-E, 10=rect. base, 11=circ. base Default is fille revE
+CARD_TYPE?=5
 
 ROOT_DIR = .
 #d:/wyres/code/BLE_V2
@@ -281,6 +283,7 @@ UASDEFs += __HEAP_SIZE=16
 UDEFS += $(SPECIFIC_REV) 
 UDEFS += FW_MAJOR=$(VER_MAJ)
 UDEFS += FW_MINOR=$(VER_MIN)
+UDEFS += CARD_TYPE=$(CARD_TYPE)
 
 # List of release define in more
 RDEFS = 

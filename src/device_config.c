@@ -16,6 +16,11 @@
 #ifndef FW_MINOR 
 #define FW_MINOR (0)
 #endif
+// Do we have card type set via makefile? if not, assume fille revE
+#ifndef CARD_TYPE
+#define CARD_TYPE 5
+#endif
+
 #define DEVICE_NAME_BASE             "W"                                       /**< Name of device when for connection beacons. Will be included in the advertising data. */
 #define DEVICE_NAME_LEN             20      // 00000000_W
 #define PASSWORD_LEN    (4)
@@ -116,6 +121,9 @@ int cfg_getFWMajor() {
 }
 int cfg_getFWMinor() {
     return FW_MINOR;
+}
+int cfg_getCardType() {
+    return CARD_TYPE;
 }
 
 void cfg_setUUID(uint8_t* value)

@@ -14,6 +14,7 @@
 #include "main.h"
 #include "bsp_minew_nrf51.h"
 #include "at_process.h"
+#include "device_config.h"
 
 #define COMM_UART_NB    (0)
 #define COMM_UART_BAUDRATE  (UART_BAUDRATE_BAUDRATE_Baud115200)     // MUST USE THE CONSTANT NOT A SIMPLE VALUE
@@ -190,33 +191,36 @@ static bool uart_gpio_init() {
     if (err_code!=NRF_SUCCESS) {
         return false;
     }
-    nrf_drv_gpiote_in_config_t vccuart_config = GPIOTE_CONFIG_IN_SENSE_TOGGLE(false);
-    vccuart_config.pull = NRF_GPIO_PIN_PULLDOWN;
-    err_code = nrf_drv_gpiote_in_init(BSP_VCCUART, &vccuart_config, uart_gpio_handler);
-    if (err_code!=NRF_SUCCESS) {
-        return false;
+    // Only define uart control io pin if on a card supporting it
+    if (cfg_getCardType()>=5 && cfg_getCardType()<10) {
+        nrf_drv_gpiote_in_config_t vccuart_config = GPIOTE_CONFIG_IN_SENSE_TOGGLE(false);
+        vccuart_config.pull = NRF_GPIO_PIN_PULLDOWN;
+        err_code = nrf_drv_gpiote_in_init(BSP_VCCUART, &vccuart_config, uart_gpio_handler);
+        if (err_code!=NRF_SUCCESS) {
+            return false;
+        }
+        // Must enable 'event' for input io to be seen
+        nrf_drv_gpiote_in_event_enable(BSP_VCCUART, true);
     }
-    // Must enable 'event' for input io to be seen
-    nrf_drv_gpiote_in_event_enable(BSP_VCCUART, true);
     return true;
 }
 
 // Handle level change on the input IO used to enable/disable uart
 static void uart_gpio_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
-    // Get current state of enable pin
-#ifdef BSP_VCCUART
-    bool state = nrf_drv_gpiote_in_is_set(BSP_VCCUART);
-    if (state==false) {
-        _ctx.isOpen = false;
-        hal_bsp_uart_deinit(_ctx.uartNb);
-        nrf_drv_gpiote_out_clear(BSP_LED_0);
+    // Get current state of enable pin if on a card that supports this (revE fille and onwards)
+    if (cfg_getCardType()>=5 && cfg_getCardType()<10) {
+        bool state = nrf_drv_gpiote_in_is_set(BSP_VCCUART);
+        if (state==false) {
+            _ctx.isOpen = false;
+            hal_bsp_uart_deinit(_ctx.uartNb);
+            nrf_drv_gpiote_out_clear(BSP_LED_0);
+        } else {
+            _ctx.isOpen = hal_bsp_uart_init(_ctx.uartNb, COMM_UART_BAUDRATE, uart_event_handler);
+            nrf_drv_gpiote_out_set(BSP_LED_0);
+        }
     } else {
         _ctx.isOpen = hal_bsp_uart_init(_ctx.uartNb, COMM_UART_BAUDRATE, uart_event_handler);
-        nrf_drv_gpiote_out_set(BSP_LED_0);
     }
-#else
-    _ctx.isOpen = hal_bsp_uart_init(_ctx.uartNb, COMM_UART_BAUDRATE, uart_event_handler);
-#endif
 }
 
 /* to get libc to be ok */

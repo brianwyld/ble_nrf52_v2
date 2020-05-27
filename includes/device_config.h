@@ -38,6 +38,7 @@ uint8_t cfg_getExtra_Value();
 
 int cfg_getFWMajor();
 int cfg_getFWMinor();
+int cfg_getCardType();
 
 // Generalised cfgmgr access for at commands
 typedef void (*PK_CB_T)(void* odev, uint16_t k, uint8_t* d, int l);
