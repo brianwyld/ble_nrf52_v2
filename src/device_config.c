@@ -30,7 +30,7 @@
 #define STR2(x) #x
 #define STR(x) STR2(x)
 // string in binary that shows verion build and date
-const char* BUILD="(@)Build v" STR(FW_MAJOR) "." STR(FW_MINOR) " on " __DATE__ " " __TIME__;
+const char* BUILD="(@)Build v" STR(FW_MAJOR) "." STR(FW_MINOR) " card type " STR(CARD_TYPE) " on " __DATE__ " " __TIME__;
 
 // Device config structure
 static struct {

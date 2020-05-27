@@ -45,6 +45,7 @@ static bool wconsole_println(void* udev, const char* l, ...);
 // predec at command handlers
 static ATRESULT atcmd_hello(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_who(uint8_t nargs, char* argv[], void* odev);
+static ATRESULT atcmd_type(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_reset(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_listcmds(uint8_t nargs, char* argv[], void* odev);
 static ATRESULT atcmd_info(uint8_t nargs, char* argv[], void* odev);
@@ -68,6 +69,7 @@ static ATRESULT atcmd_debug_stats(uint8_t nargs, char* argv[], void* odev);
 static ATCMD_DEF_t ATCMDS[] = {
     { .cmd="AT", .desc="Wakeup", .fn=atcmd_hello},
     { .cmd="AT+WHO", .desc="Card mode", .fn=atcmd_who},
+    { .cmd="AT+TYPE", .desc="Card type", .fn=atcmd_type},
     { .cmd="AT+HELP", .desc="List commands", .fn=atcmd_listcmds},
     { .cmd="ATZ", .desc="Reset card", .fn=atcmd_reset},
     { .cmd="AT+INFO", .desc="Show info", .fn=atcmd_info},
@@ -214,6 +216,10 @@ static ATRESULT atcmd_hello(uint8_t nargs, char* argv[], void* odev) {
 // Return decimal integer with firmware version
 static ATRESULT atcmd_who(uint8_t nargs, char* argv[], void* odev) {
     wconsole_println(odev, "%d", (((cfg_getFWMajor() & 0xFF)<<8) + (cfg_getFWMinor() & 0xff)));
+    return ATCMD_PROCESSED;     // don't need to says ok
+}
+static ATRESULT atcmd_type(uint8_t nargs, char* argv[], void* odev) {
+    wconsole_println(odev, "%d", cfg_getCardType());
     return ATCMD_PROCESSED;     // don't need to says ok
 }
 
