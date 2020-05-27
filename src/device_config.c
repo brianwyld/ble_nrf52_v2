@@ -22,6 +22,11 @@
 #define MAGIC_CFG_SAVED (0x60671520)    // magic number meaning full saved config present in flash
 #define MAGIC_CFG_PROD (0x60671519)     // magic number meaning just production saved config present in flash
 
+#define STR2(x) #x
+#define STR(x) STR2(x)
+// string in binary that shows verion build and date
+const char* BUILD="(@)Build v" STR(FW_MAJOR) "." STR(FW_MINOR) " on " __DATE__ " " __TIME__;
+
 // Device config structure
 static struct {
     uint32_t magic;

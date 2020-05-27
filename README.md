@@ -20,8 +20,8 @@ You have to set your gcc path in makefile IFF it is not in your PATH eg:
 GNU_INSTALL_ROOT := C:\Program Files (x86)\GNU Tools ARM Embedded\8 2019-q3-update 
 
 Run "make cleanOutputs" to clean all previous outputs.
-Run "make itall" to build everything for production (no debug)
-Run "make itall_debug" to build everything for debug
+Run "make itall VER_MAJ=X VER_MIN=Y" to build everything for production (no debug) with version reported as X.Y (note that must be >2.0 to work with base card)
+Run "make itall_debug" to build everything for debug (optionally with version, 2.0 will be used as default)
 
 ## flashing with ST-LINK
 

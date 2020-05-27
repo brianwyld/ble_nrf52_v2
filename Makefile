@@ -4,6 +4,9 @@
 
 # Default var
 SPECIFIC_REV   = 
+# if not passed on command line
+VER_MAJ?=2
+VER_MIN?=0
 
 ROOT_DIR = .
 #d:/wyres/code/BLE_V2
@@ -274,8 +277,10 @@ UDEFS += SWI_DISABLE0
 
 UASDEFs += __HEAP_SIZE=16
 
-# define for specific revision
-UDEFS += $(SPECIFIC_REV)
+# define for specific revision and set fw major/minor values
+UDEFS += $(SPECIFIC_REV) 
+UDEFS += FW_MAJOR=$(VER_MAJ)
+UDEFS += FW_MINOR=$(VER_MIN)
 
 # List of release define in more
 RDEFS = 
