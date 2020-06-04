@@ -14,7 +14,7 @@ All the source files, header files and linker scripts are located in the project
 GCC tools should be installed on the PC, and have their bin in the PATH.
 OpenOCD can be used to flash the nrf51, installed in c:/soft/openocd-0.10.0 (otherwise go change flash_w_stlink.bat)
 
-## makefile
+## building
 
 You have to set your gcc path in makefile IFF it is not in your PATH eg:
 GNU_INSTALL_ROOT := C:\Program Files (x86)\GNU Tools ARM Embedded\8 2019-q3-update 
@@ -22,14 +22,18 @@ GNU_INSTALL_ROOT := C:\Program Files (x86)\GNU Tools ARM Embedded\8 2019-q3-upda
 Run "make cleanOutputs" to clean all previous outputs.
 Run "make itall VER_MAJ=X VER_MIN=Y" to build everything for production (no debug) with version reported as X.Y (note that must be >2.0 to work with base card)
 Run "make itall_debug" to build everything for debug (optionally with version, 2.0 will be used as default)
+By default the 'CARD_TYPE' parameter is 5, for the rev E of the BLE daighter card ie continuously powered, uart controlled by vcc_uart.
+If using a revC/D version, you MUST set the 'CARD_TYPE' parameter to 3 (revC) or 4 (revD) by adding "CARD_TYPE=4" to the make line.
+
+Production hexes are placed in the hexs subdirectory, named with their version and type.
 
 ## flashing with ST-LINK
 
-Attach ST-Link to the target and run "flash_w_stlink.bat" (in script) with arguements: "ble_modem","major_in_hex", minor_in_hex"
+Attach ST-Link to the target and run "flash_w_stlink.bat" (in script) with arguments of the hex file (path from project root, without the suffix), and default major/minor  as 4 digit hex values
 
-Example : for flashing ble_modem.hex for the preidentified target 0x0002002e type :
+Example : for flashing the most recent build file ble_modem.hex for the preidentified target 0x0002002e type :
 ```
-flash_w_stlink.bat ble_modem 0002 002e
+flash_w_stlink.bat outputs/ble_modem 0002 002e
 ```
 
 ## debugging with st-link
