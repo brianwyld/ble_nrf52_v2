@@ -1,18 +1,19 @@
 # Description
 
+TO BE UPDATED
+
 This project is made to compile and use the BLE iBeacon + scanner Wyres firmware using GCC toolchain.
-Hardware is a Minew MS49SF2 module using a nRF51822-QFAA bluetooth chip.
+Hardware is a Minew MS50SFA2 module using a nRF52832-QFAA bluetooth chip.
 
 It uses the Nordic SDK/SoftDevice system:
- - SDK 12.3.0 (approx)
- - Softdevice S130 v2.0.1 (probably)
-[approx because nordic don't include a version header file, so its tricky to tell exactly which version of the SDK/SD you have..]
+ - SDK : latest
+ - Softdevice S130 v? (probably)
 
 # Use
 
 All the source files, header files and linker scripts are located in the project.
 GCC tools should be installed on the PC, and have their bin in the PATH.
-OpenOCD can be used to flash the nrf51, installed in c:/soft/openocd-0.10.0 (otherwise go change flash_w_stlink.bat)
+OpenOCD can be used to flash the nrf52, installed in c:/soft/openocd-0.10.0 (otherwise go change flash_w_stlink.bat)
 
 ## building
 
@@ -63,6 +64,8 @@ After that you can launch debugging as usual on vscode.
 #Known issues
 
 ## RAM alignment
+
+TO BE UPDATED
 
 nRF51822-QFAA : 	Code size : 256 kB, Page size : 1024 byte, Nb pages : 256, 
 					RAM size : 16kB, Block 0 = 8 kB, Block 1 = 8 kB 
