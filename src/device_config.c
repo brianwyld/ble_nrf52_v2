@@ -5,8 +5,8 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "bsp_minew_nrf52.h"
 #include "wutils.h"
-#include "bsp_minew_nrf51.h"
 #include "main.h"
 #include "device_config.h"
 

@@ -5,8 +5,12 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <stdarg.h>
+
+#include "bsp_minew_nrf52.h"
+
 #include "ble_nus.h"
 #include "app_util_platform.h"
 #include "ble_hci.h"
@@ -14,7 +18,7 @@
 #include "app_uart.h"
 #include "ibs_scan.h"
 #include "nrf_delay.h"
-#include "softdevice_handler.h"
+//#include "softdevice_handler.h"
 
 #include "wutils.h"
 #include "device_config.h"
@@ -25,7 +29,6 @@
 #include "comm_ble.h"
 
 #include "nrf_drv_gpiote.h"
-#include "bsp_minew_nrf51.h"
 
 #define MAX_TXSZ (100)
 #define MAX_ARGS (8)

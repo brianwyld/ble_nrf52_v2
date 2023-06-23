@@ -19,8 +19,8 @@
 #include <ctype.h>
 #include "app_error.h"
 
+#include "bsp_minew_nrf52.h"
 #include "wutils.h"
-#include "bsp_minew_nrf51.h"
 #include "main.h"
 #include "comm_uart.h"
 
@@ -217,7 +217,7 @@ void Util_writeLE_int16_t(uint8_t* b, uint8_t offset, int16_t v) {
 /*
  * helper to read 32 bit LE from buffer (may be 0 stripped)
  */
-uint32_t Util_readLE_uint32_t(uint8_t* b, uint8_t l) {
+uint32_t Util_readLE_uint32_t(const uint8_t* b, uint8_t l) {
     uint32_t ret = 0;
     for(int i=0;i<4;i++) {
         if (b!=NULL && i<l) {
@@ -229,7 +229,7 @@ uint32_t Util_readLE_uint32_t(uint8_t* b, uint8_t l) {
 /*
  * helper to read 16 bit LE from buffer (may be 0 stripped)
  */
-uint16_t Util_readLE_uint16_t(uint8_t* b, uint8_t l) {
+uint16_t Util_readLE_uint16_t(const uint8_t* b, uint8_t l) {
     uint16_t ret = 0;
     for(int i=0;i<2;i++) {
         if (b!=NULL && i<l) {
@@ -241,7 +241,7 @@ uint16_t Util_readLE_uint16_t(uint8_t* b, uint8_t l) {
 /*
  * helper to read 16 bit BE from buffer (may be 0 stripped)
  */
-uint16_t Util_readBE_uint16_t(uint8_t* b, uint8_t l) {
+uint16_t Util_readBE_uint16_t(const uint8_t* b, uint8_t l) {
     uint16_t ret = 0;
     for(int i=0;i<2;i++) {
         if (b!=NULL && i<l) {

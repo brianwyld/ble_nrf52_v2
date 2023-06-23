@@ -3,10 +3,10 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include "bsp_minew_nrf52.h"
 #include "ble_gap.h"
 #include "ble_advdata.h"
 #include "app_error.h"
-#include "bsp.h"
 #include "app_uart.h"
 
 #include "wutils.h"
@@ -49,9 +49,8 @@ static const ble_gap_scan_params_t m_scan_params =
 */
 #define SCAN_INTERVAL           0x00BA                          // < Determines scan interval in units of 0.625 millisecond. 0x00A0
 #define SCAN_WINDOW             0x00B0                          // < Determines scan window in units of 0.625 millisecond. 0x0050
-#define SCAN_ACTIVE             1                               // If 1, performe active scanning (scan requests).
+#define SCAN_ACTIVE             0                               // If 1, performe active scanning (scan requests).
 #define SCAN_TIMEOUT            0x0000                          // < Timout when scanning. 0x0000 disables timeout.
-#define SCAN_SELECTIVE          0                               // < If 1, ignore unknown devices (non whitelisted).
 
 static struct {
     uint8_t ibs_scan_filter_uuid[UUID128_SIZE];
@@ -60,13 +59,14 @@ static struct {
     bool ibs_scan_active;
     bool ibs_scan_filter_uuid_active;
     UART_TX_FN_T output_tx_fn;          // Where to write current scan results to
+    uint8_t scan_buffer[BLE_GAP_SCAN_BUFFER_EXTENDED_MAX_SUPPORTED+1];
 } _ctx;
 
 
 
 // Predecs
 static bool ibs_is_adv_pkt(uint8_t *data);
-static void ibs_scan_add(uint8_t* remoteaddr, uint8_t* data2, int8_t rssi);
+static void ibs_scan_add(const uint8_t* remoteaddr, const uint8_t* data2, int8_t rssi);
 static bool ibs_scan_uuid_match(uint8_t* uuid);
 
 /**@brief Function to start scanning.
@@ -92,15 +92,17 @@ bool ibs_scan_restart()
 {
     uint32_t err_code;
     ble_gap_scan_params_t m_scan_params;
-    
+    ble_data_t scanbuf = {
+        .p_data = &_ctx.scan_buffer[0],
+        .len = BLE_GAP_SCAN_BUFFER_EXTENDED_MAX_SUPPORTED
+    };
     m_scan_params.interval = SCAN_INTERVAL;
     m_scan_params.window   = SCAN_WINDOW;
     m_scan_params.active = SCAN_ACTIVE;
     m_scan_params.timeout  = SCAN_TIMEOUT;
-    m_scan_params.selective   = SCAN_SELECTIVE;
-    m_scan_params.p_whitelist = NULL;
+    m_scan_params.filter_policy   = BLE_GAP_SCAN_FP_ACCEPT_ALL;
 
-    err_code = sd_ble_gap_scan_start(&m_scan_params);
+    err_code = sd_ble_gap_scan_start(&m_scan_params, &scanbuf);
     
     if (err_code == NRF_SUCCESS)
     {
@@ -140,17 +142,17 @@ int ibs_scan_getTableSize() {
     return _ctx.ibs_scan_result_index;
 }
 
-void ibs_handle_advert(ble_gap_evt_adv_report_t * p_adv_report) 
+void ibs_handle_advert(const ble_gap_evt_adv_report_t * p_adv_report) 
 {
     if (!_ctx.ibs_scan_active)
     {
         return;
     }
-    if (ibs_is_adv_pkt(p_adv_report->data))
+    if (ibs_is_adv_pkt(p_adv_report->data.p_data))
     {
-        if (ibs_scan_uuid_match(&p_adv_report->data[IBS_IBEACON_UUID_OFFSET]))
+        if (ibs_scan_uuid_match(&p_adv_report->data.p_data[IBS_IBEACON_UUID_OFFSET]))
         {
-            ibs_scan_add(p_adv_report->peer_addr.addr,p_adv_report->data, p_adv_report->rssi);
+            ibs_scan_add(p_adv_report->peer_addr.addr,p_adv_report->data.p_data, p_adv_report->rssi);
         }
     }
 
@@ -183,7 +185,7 @@ static bool ibs_scan_uuid_match(uint8_t* uuid)
     }
 }
 
-static void ibs_scan_add(uint8_t* remoteaddr, uint8_t* data, int8_t rssi)
+static void ibs_scan_add(const uint8_t* remoteaddr, const uint8_t* data, int8_t rssi)
 {    
     // copy major, minor, measpow
     if (_ctx.ibs_scan_result_index >= IBS_SCAN_LIST_LENGTH)

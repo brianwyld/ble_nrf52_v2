@@ -1,9 +1,10 @@
-#include "app_util_platform.h"
-#include "nrf_drv_clock.h"
+#if 0
+#include "nrf.h"
 #include "sdk_config.h"
+#include "app_util_platform.h"
+#include "nrfx_clock.h"
 #include "timer_watchdog.h"
 
-#if 0
 static uint16_t limit_counter = 0;
 #define MAX_LIMIT       2000
 

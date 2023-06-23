@@ -5,6 +5,8 @@
 #include <inttypes.h>
 
 #include <stdio.h>
+
+#include "bsp_minew_nrf52.h"
 #include "nrf_drv_gpiote.h"
 
 #include "app_uart.h"
@@ -12,7 +14,6 @@
 #include "wutils.h"
 
 #include "main.h"
-#include "bsp_minew_nrf51.h"
 #include "at_process.h"
 #include "device_config.h"
 
