@@ -16,9 +16,9 @@
 #ifndef FW_MINOR 
 #define FW_MINOR (0)
 #endif
-// Do we have card type set via makefile? if not, assume fille revE
+// Do we have card type set via makefile? if not, assume breakout board
 #ifndef CARD_TYPE
-#define CARD_TYPE 5
+#define CARD_TYPE CARD_TYPE_WBLE_RECT
 #endif
 
 #define DEVICE_NAME_BASE             "W"                                       /**< Name of device when for connection beacons. Will be included in the advertising data. */
@@ -82,6 +82,7 @@ void cfg_init() {
     // Check if our magic number is there and read from page (ie valid config present) otherwise use compile time defaults
     uint32_t magic=0;
     hal_bsp_nvmRead(0, 4, (uint8_t*)&magic);
+    magic=0;        // BW NVM broken for now
     if (magic==MAGIC_CFG_PROD) {
         // Only the major/minor were written by production process
         _ctx.major_value = hal_bsp_nvmRead16(4);
@@ -106,10 +107,12 @@ static void configUpdateRequest() {
 }
 void cfg_writeCheck() {
     if (_ctx.flashWriteReq) {
+        log_info("FLASH WRITE");
         app_setFlashBusy();     // not sure if this works
         // Write entire structure
         // TODO ADD PAGE ERASE ETC
         hal_bsp_nvmWrite(0, sizeof(_ctx), (uint8_t*)&_ctx);
+        log_info("FLASH WRITE DONE");
     }
     _ctx.flashWriteReq = false;
 }

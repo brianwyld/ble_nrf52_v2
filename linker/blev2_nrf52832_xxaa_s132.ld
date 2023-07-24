@@ -7,20 +7,22 @@ GROUP(-lgcc -lc -lnosys)
 MEMORY
 {
   /* flash starts at 0x00000 and is 0x80000 size (512kb) for nRF52832xxaa */
-  /* is there a bootloader?
-  /* Softdevice S132 hex is loaded at 0x20000 and uses 0x6000, so leave some space and our app starts at 0x30000 and has 0x50000 to play with */
+  /* Softdevice S132 hex is loaded at 0x01000 and uses up to 0x25000 (SD_FLASH_SIZE in nrf_sdm.h), so our app starts at 0x26000 (APP_CODE_BASE) and has 0x50000 to play with */
+  /* app must live at APP_CODE_BASE?
+  /* bootloader lives after the application at 0x78000 so we only use up to that point
   /* We leave 1K (0x400) for our application specific config store at the end of the flash after app area. */
-  FLASH (rx) : ORIGIN = 0x30000, LENGTH = 0x50000-0x400
-  FLASH_CFG (rw!x) : ORIGIN = 0x80000-0x400, LENGTH = 0x400
+  
+  FLASH (rx) : ORIGIN = 0x26000, LENGTH = 0x78000-0x26000-0x400
+  FLASH_CFG (rw!x) : ORIGIN = 0x78000-0x400, LENGTH = 0x400
 
   /* RAM starts at 0x20000000 and is size 0x10000 (64kb) */
   /* Softdevice S132 starts at the beginning and uses X amount where X depends on the number of connections/DB etc defined */
   /* our RAM area is just after softdevice area , up to the end */
   /* Softdevice S132 requires 0x1668? (looking at armgcc_s132_nrf52832_xxaa.ld from nrfsdk/components/softdevice/s132/toolchain/armgcc) */
-  /* plus extra for N connections... */ 
+  /* plus extra for N connections... - examples/blinky/S132 has 0x5968 */ 
   /* 1 Central + 1 periph + 1 UUID -> ? S132 v7 seems to have some method of working it out */
-  /* Randomly we give it 0x3000 and hope its enough. Leaves us with 52Kb... */
-  RAM (rwx) :  ORIGIN = 0x20003000, LENGTH = 0xd000
+  /* round up to 0x5a00 */
+  RAM (rwx) :  ORIGIN = 0x20005a00, LENGTH = 0xa600
 }
 
 

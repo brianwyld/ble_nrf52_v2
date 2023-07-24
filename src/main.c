@@ -12,17 +12,19 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "bsp_minew_nrf52.h"
-
 #include "nordic_common.h"
 #include "nrf.h"
+
 #include "app_timer.h"
 #include "app_error.h"
 #include "app_uart.h"
 #include "app_button.h"
 #include "app_util.h"
 #include "app_util_platform.h"
+
 #include "boards.h"
+#include "bsp_minew_nrf52.h"
+
 #include "ble.h"
 #include "ble_conn_params.h"
 #include "ble_db_discovery.h"
@@ -33,6 +35,7 @@
 #include "ble_advdata.h"
 #include "ble_advertising.h"
 #include "nrf_sdh.h"
+#include "nrf_sdh_soc.h"
 #include "nrf_delay.h"
 #include "nrf_drv_gpiote.h"
 #include "nrf_log.h"
@@ -56,13 +59,14 @@
 #define PERIPHERAL_LINK_COUNT           1   /**< Number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/
 
 #define NRF_BLE_MAX_MTU_SIZE    NRF_SDH_BLE_GATT_MAX_MTU_SIZE   /**< MTU size used in the softdevice enabling and to reply to a BLE_GATTS_EVT_EXCHANGE_MTU_REQUEST event. */
-
+#define APP_SOC_OBSERVER_PRIO           1                                           /**< Applications SOC event observer priority (must be <2) */
 #define APP_BLE_CONN_CFG_TAG            1                                           /**< A tag identifying the SoftDevice BLE configuration. */
 #define APP_BLE_OBSERVER_PRIO           3                                           /**< Application's BLE observer priority. You shouldn't need to modify this value. */
 
 #define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2        /**< Reply when unsupported features are requested. */
- 
-#define NUS_SERVICE_UUID_TYPE           BLE_UUID_TYPE_VENDOR_BEGIN                  /**< UUID type for the Nordic UART Service (vendor specific). */
+
+// BW TODO seems like seeting to BLE_UUID_TYPE_VENDOR_BEGIN is not allowed any more for 16bit UUIDs (sd_uuid_encode fails with invalid type)
+#define NUS_SERVICE_UUID_TYPE   BLE_UUID_TYPE_BLE       //VENDOR_BEGIN      /**< UUID type for the Nordic UART Service (vendor specific). */
  
 #define APP_ADV_INTERVAL_MS_SLOW        1000                                          /**< The advertising interval when not actively beaconing (in units of ms). */
 #define APP_ADV_TIMEOUT_IN_SECONDS       60                                         /**< The advertising timeout (in units of seconds). */
@@ -78,8 +82,6 @@
 #define MAX_CONN_PARAMS_UPDATE_COUNT    3                                           /**< Number of attempts before giving up the connection parameter negotiation. */
  
 #define DEAD_BEEF 0xDEADBEEF                                    /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
-
-#define NUS_SERVICE_UUID_TYPE   BLE_UUID_TYPE_VENDOR_BEGIN      /**< UUID type for the Nordic UART Service (vendor specific). */
 
 #define APP_TIMER_PRESCALER     0                               /**< Value of the RTC1 PRESCALER register. */
 #define APP_TIMER_OP_QUEUE_SIZE 2                               /**< Size of timer operation queues. */
@@ -105,13 +107,39 @@ static struct app_context {
     bool flashBusy;
     bool resetRequested;
     ble_advertising_t adv_ctx;
+    char advName[20];
+    int8_t txPower;
 } _ctx = {
     .m_conn_handle = BLE_CONN_HANDLE_INVALID, 
 };
 
-static void sys_evt_handler(uint32_t evt);
+static void sys_evt_handler(uint32_t evt_id, void * p_context);
+static void ble_evt_dispatch(const ble_evt_t * p_ble_evt, void* p_ctx);
+
+// Register a handler for SOC events for flash busy/free
+NRF_SDH_SOC_OBSERVER(m_soc_observer, APP_SOC_OBSERVER_PRIO, sys_evt_handler, NULL);
+// Register a handler for BLE events.
+NRF_SDH_BLE_OBSERVER(m_ble_observer, APP_BLE_OBSERVER_PRIO, ble_evt_dispatch, NULL);
+
+static void advertising_init(ble_advertising_t* p_adv_ctx, int8_t* p_txPower);
+static void advertising_update(ble_advertising_t* p_adv_ctx, int8_t* p_txPower);
 static bool advertising_check_start();
 static uint8_t makeAdvPowerLevel( void );
+
+static void button1_event(uint8_t pin_no, uint8_t button_action);
+static void button2_event(uint8_t pin_no, uint8_t button_action);
+static void button3_event(uint8_t pin_no, uint8_t button_action);
+static app_button_cfg_t button_cfgs[BUTTONS_NUMBER] = {
+    { .pin_no = BUTTON_1, .active_state=APP_BUTTON_ACTIVE_HIGH, .pull_cfg=GPIO_PIN_CNF_PULL_Pulldown, .button_handler = button1_event },
+    { .pin_no = BUTTON_2, .active_state=APP_BUTTON_ACTIVE_HIGH, .pull_cfg=GPIO_PIN_CNF_PULL_Pulldown, .button_handler = button2_event },
+//    { .pin_no = BSP_BUTTON_3, .active_state=APP_BUTTON_ACTIVE_HIGH, .pull_cfg=GPIO_PIN_CNF_PULL_Pulldown, .button_handler = button3_event },
+};
+
+// debug startup helpers
+static void init_stage(int s);
+static bool _logs = false;
+#undef APP_ERROR_CHECK
+#define APP_ERROR_CHECK(d)  if (d!=NRF_SUCCESS) { if (_logs) { log_error("at %d in %s, error code %d", __LINE__, __FILE__, d); } else { init_stage(255);}}
 
 //APP_TIMER_DEF(m_deinit_uart_delay); 
 
@@ -149,7 +177,7 @@ static void sleep_mode_enter(void)
     uint32_t err_code = sd_power_system_off();
     APP_ERROR_CHECK(err_code);
 }
- 
+
 
 /**@brief Function for handling an event from the Connection Parameters Module.
  *
@@ -193,26 +221,29 @@ static void conn_params_error_handler(uint32_t nrf_error)
  */
 static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
 {
-    log_info("evt:advertsing evt %d", ble_adv_evt);
 
     switch (ble_adv_evt)
     {
         case BLE_ADV_EVT_FAST:
+            log_info("evt:advertsing FAST");
             // use leds if present to indicate state
             led_indication(INDICATE_ADVERTISING);
             break;
         case BLE_ADV_EVT_SLOW:
+            log_info("evt:advertsing SLOW");
             // use leds if present to indicate state
             led_indication(INDICATE_ADVERTISING_SLOW);
             // if not being an ibeacon we are sending just NUS adverts
             break;
         case BLE_ADV_EVT_IDLE:
+            log_info("evt:advertsing IDLE");
             // use leds if present to indicate state
             led_indication(INDICATE_IDLE);
         // BW : no sleeping on this job TODO check
 //            sleep_mode_enter();
         break;
         default:
+            log_info("evt:unprocessed advertsing evt %d", ble_adv_evt);
         break;
     }
 }
@@ -228,6 +259,7 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
  */
 static void ble_evt_dispatch(const ble_evt_t * p_ble_evt, void* p_ctx)
 {
+    log_info("ble event %d",p_ble_evt->header.evt_id);
     // First dispatch to other services to see if they need to process it
     // Dispatch to ble stack services if we want to be connected
     //ble_conn_params_on_ble_evt(p_ble_evt);
@@ -245,9 +277,10 @@ static void ble_evt_dispatch(const ble_evt_t * p_ble_evt, void* p_ctx)
     {
         case BLE_GAP_EVT_CONNECTED:
             log_info("evt:gap connect");
-            if (cfg_getConnectable()) {
+            // Only allow the connection if we are configured to allow it and there is not already someone connected
+            if (cfg_getConnectable() && _ctx.m_conn_handle==BLE_CONN_HANDLE_INVALID) {
                 led_indication(INDICATE_CONNECTED);
-                // Stop advertising
+                // Stop advertising, we only let 1 cnx at a time
                 sd_ble_gap_adv_stop(_ctx.adv_ctx.adv_handle);
                 _ctx.m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
                 // password check has not been validated for this connection
@@ -365,43 +398,30 @@ static void ble_evt_dispatch(const ble_evt_t * p_ble_evt, void* p_ctx)
             APP_ERROR_CHECK(err_code);
         break; // BLE_GATTS_EVT_EXCHANGE_MTU_REQUEST
  
+        case BLE_GAP_EVT_ADV_SET_TERMINATED:
+        {
+            const ble_gap_evt_adv_set_terminated_t* p_adv_term = &p_ble_evt->evt.gap_evt.params.adv_set_terminated;
+            if (p_adv_term->reason==BLE_GAP_EVT_ADV_SET_TERMINATED_REASON_TIMEOUT) {
+                // restart it
+                log_info("advertising restart");
+                advertising_check_start();
+            } else {
+                log_info("advertising stopped due to %d", p_adv_term->reason);
+            }
+            break;
+        }
         default:
             // No implementation needed.
         break;
     }
 }
 
-/**@brief Function for handling events from the BSP module.
- *
- * @param[in] event  Event generated by bsp
- */
-/*
-static void bsp_event_handler(bsp_event_t event)
-{
-    switch (event)
-    {
-        case BSP_EVENT_SLEEP:
-            sleep_mode_enter();
-        break;
-
-        case BSP_EVENT_DISCONNECT:
-            comm_ble_disconnect();
-            advertising_check_start();
-        break;
-        case BSP_EVENT_WHITELIST_OFF:
-            advertising_check_start();
-        break;
-            
-        default:
-        break;
-    }
-}
-*/
-
 // Callback when system events happen
-static void sys_evt_handler(uint32_t evt)
+static void sys_evt_handler(uint32_t evt_id, void * p_context)
 {
-    switch(evt)
+    log_info("SOC event %d", evt_id);
+
+    switch(evt_id)
     {
         case NRF_EVT_FLASH_OPERATION_SUCCESS:
             _ctx.flashBusy = false;
@@ -415,27 +435,6 @@ static void sys_evt_handler(uint32_t evt)
         break;
     }
 }
-
-/**@brief Function for initializing buttons and leds.
- *
- * @param[out] p_erase_bonds  Will be true if the clear bonding button was pressed to wake the application up.
- */
-/*
-static void buttons_leds_init(bool * p_erase_bonds)
-{
-    bsp_event_t startup_event;
- 
-    uint32_t err_code = bsp_init(BSP_INIT_LED | BSP_INIT_BUTTONS,
-                                 APP_TIMER_TICKS(100, APP_TIMER_PRESCALER),
-                                 bsp_event_handler);
-    APP_ERROR_CHECK(err_code);
- 
-    err_code = bsp_btn_ble_init(NULL, &startup_event);
-    APP_ERROR_CHECK(err_code);
- 
-    *p_erase_bonds = (startup_event == BSP_EVENT_CLEAR_BONDING_DATA);
-}
-*/
 
 /**@brief Function for initializing the Connection Parameters module.
  * one time boot init
@@ -485,9 +484,11 @@ static void gap_params_init(void)
  */
 static void services_init(void)
 {
-    comm_ble_init();
+    log_info("BLE UART (NUS) init");
+    log_info("(disabled)");
+    //comm_ble_init();
 }
- 
+
 /**@brief Function for initializing the BLE stack.
  * One time init at boot
  * @details Initializes the SoftDevice and the BLE event interrupt.
@@ -498,66 +499,43 @@ static void ble_stack_init(void)
 
     err_code = nrf_sdh_enable_request();
     APP_ERROR_CHECK(err_code);
+    log_info("softdevice enabled");
 
     // Configure the BLE stack using the default settings.
     // Fetch the start address of the application RAM.
     uint32_t ram_start = 0;
+    err_code = nrf_sdh_ble_app_ram_start_get(&ram_start);
+    APP_ERROR_CHECK(err_code);
+    log_info("softdevice says app ram starts at %x", ram_start);
     err_code = nrf_sdh_ble_default_cfg_set(APP_BLE_CONN_CFG_TAG, &ram_start);
     APP_ERROR_CHECK(err_code);
-
     // Enable BLE stack.
     err_code = nrf_sdh_ble_enable(&ram_start);
     APP_ERROR_CHECK(err_code);
+    log_info("ble enabled");
 
-    // Register a handler for BLE events.
-    NRF_SDH_BLE_OBSERVER(m_ble_observer, APP_BLE_OBSERVER_PRIO, ble_evt_dispatch, NULL);
-
-    /* TODO 
-    softdevice_sys_evt_handler_set(sys_evt_handler);
-        
-    */
-
-    /* TODO
-    uint32_t err_code;
-
-    nrf_clock_lf_cfg_t clock_lf_cfg = NRF_CLOCK_LFCLKSRC;
-
-    // Initialize the SoftDevice handler module.
-    SOFTDEVICE_HANDLER_INIT(&clock_lf_cfg, NULL);
-
-    ble_enable_params_t ble_enable_params;
-    err_code = softdevice_enable_get_default_config(CENTRAL_LINK_COUNT,
-                                                    PERIPHERAL_LINK_COUNT,
-                                                    &ble_enable_params);
-    APP_ERROR_CHECK(err_code);
-    // We have almost no GATTs
-//    ble_enable_params.gatts_enable_params.attr_tab_size = BLE_GATTS_ATTR_TAB_SIZE_MIN;
-//    ble_enable_params.common_enable_params.vs_uuid_count = 1;
-    //Check the ram settings against the used number of links
-    CHECK_RAM_START_ADDR(CENTRAL_LINK_COUNT,
-                                PERIPHERAL_LINK_COUNT);
-
-    // Enable BLE stack.
-    ble_enable_params.gatt_enable_params.att_mtu = NRF_BLE_MAX_MTU_SIZE;
-    err_code = softdevice_enable(&ble_enable_params);
-    APP_ERROR_CHECK(err_code);
-
-    // Register with the SoftDevice handler module for BLE events.
-    err_code = softdevice_ble_evt_handler_set(ble_evt_dispatch);
-    APP_ERROR_CHECK(err_code);
-
-*/
 }
 
 /* One time boot init of ble stack */
 static void ble_init(void) {
+    
+    log_info("ble stack init");
     ble_stack_init();
 
+    log_info("ble gap init");
     gap_params_init();
+
+    log_info("ble services init");
     services_init();
 
     // Initialise connection parameters
+    log_info("ble conn params init");
     conn_params_init();
+
+    log_info("ble advertising params init");
+    advertising_init(&_ctx.adv_ctx, &_ctx.txPower);
+    log_info("ble stack init done");
+
 }
 
 /* one time system init */
@@ -584,6 +562,13 @@ static void system_init(void)
         err_code = nrf_drv_gpiote_init();
         APP_ERROR_CHECK(err_code);
     }
+    
+    // BW TODO WHY DOESN4T WORK WITH 2 BUTTONS????
+    err_code = app_button_init(button_cfgs, 1,50);  //BUTTONS_NUMBER, 50);
+    APP_ERROR_CHECK(err_code);
+    err_code = app_button_enable();
+    APP_ERROR_CHECK(err_code);
+
 
 }
 
@@ -669,79 +654,99 @@ static uint8_t makeAdvPowerLevel( void )
 }
  
 /**@brief Function for initializing the Advertising functionality params
- * call before each start of beaconning to update from config in case it changed
+ * call once to init the p_adv_ctx
  */
-static void advertising_setup(ble_advertising_t* p_adv_ctx)
+static void advertising_init(ble_advertising_t* p_adv_ctx, int8_t* p_txPower)
 {
     uint32_t               err_code;
     ble_advertising_init_t ai;
-    ble_advdata_manuf_data_t manuf_specific_data; 
-    ble_uuid_t m_adv_uuids[] = {{BLE_UUID_NUS_SERVICE, NUS_SERVICE_UUID_TYPE}};     // Advertise NUS server for at commands over NUS
-    int8_t txPowerLevel = cfg_getTXPOWER_Level();
 
     memset(&ai, 0, sizeof(ai));
 
     ai.evt_handler = on_adv_evt;
     ai.error_handler = NULL;
-    manuf_specific_data.company_identifier = cfg_getCompanyID();
-    // iBeacons are a BLE advert with a specific 'manufacteur specific' block, which is a TLV essentially
-    _ctx.m_beacon_info[0] = APP_BEACON_ADV_DEVICE_TYPE;     // Tag - this is a ibeacon
-    _ctx.m_beacon_info[1] = APP_BEACON_ADV_DATA_LENGTH;     // length of rest of block
+    ai.advdata.name_type             = BLE_ADVDATA_FULL_NAME;
+    ai.advdata.flags                 = (BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED);
+    // Not connectable, no uuids advertised to avoid access to NUS
+    ai.srdata.uuids_complete.uuid_cnt = 0;
+    ai.srdata.uuids_complete.p_uuids  = NULL;
+    ai.srdata.name_type = BLE_ADVDATA_FULL_NAME;
+    ai.srdata.short_name_len = 8;      // get at least id part (maj/min in hex)
+    ai.srdata.p_tx_power_level = p_txPower;
 
-    memcpy(&_ctx.m_beacon_info[2], cfg_getUUID(), UUID128_SIZE);
-    _ctx.m_beacon_info[18] = MSB_16(cfg_getMajor_Value());
-    _ctx.m_beacon_info[19] = LSB_16(cfg_getMajor_Value());
-    _ctx.m_beacon_info[20] = MSB_16(cfg_getMinor_Value());
-    _ctx.m_beacon_info[21] = LSB_16(cfg_getMinor_Value());    
-    _ctx.m_beacon_info[22] = makeAdvPowerLevel();
+    // Give both options for advert speed (the one used depends on whether isIBeaconning() is true or not)
+    ai.config.ble_adv_fast_enabled  = true;
+    ai.config.ble_adv_fast_interval = MSEC_TO_UNITS(cfg_getADV_IND(), UNIT_0_625_MS);
+    ai.config.ble_adv_fast_timeout  = APP_ADV_TIMEOUT_IN_SECONDS*100;
+    ai.config.ble_adv_slow_enabled = true;
+    ai.config.ble_adv_slow_interval = MSEC_TO_UNITS(APP_ADV_INTERVAL_MS_SLOW, UNIT_0_625_MS);     //1285*1.6;
+    ai.config.ble_adv_slow_timeout  = APP_ADV_TIMEOUT_IN_SECONDS*100;
+     
+    err_code = ble_advertising_init(p_adv_ctx, &ai);
+    APP_ERROR_CHECK(err_code);
+    ble_advertising_conn_cfg_tag_set(p_adv_ctx, APP_BLE_CONN_CFG_TAG);
+}
+ /**@brief Function for updateing the Advertising functionality params
+ * call before each start of beaconning to update from config in case it changed
+ */
+static void advertising_update(ble_advertising_t* p_adv_ctx, int8_t* p_txPower)
+{
+    uint32_t               err_code;
+    ble_advdata_t advdata;
+    ble_advdata_t srdata;
+    ble_advdata_manuf_data_t manuf_specific_data; 
+    ble_uuid_t m_adv_uuids[] = {{BLE_UUID_NUS_SERVICE, NUS_SERVICE_UUID_TYPE}};     // Advertise NUS server for at commands over NUS
 
-    manuf_specific_data.data.p_data = (uint8_t *) (&_ctx.m_beacon_info[0]);
-    manuf_specific_data.data.size   = APP_BEACON_INFO_LENGTH;
+    memset(&advdata, 0, sizeof(advdata));
+    memset(&srdata, 0, sizeof(srdata));
+
  
     // Build advertising data struct to pass into @ref ble_advertising_init.
     if (cfg_isIBeaconning()) {
         // Only make our advert look like an ibeacon if we are wanting it to be one
-        ai.advdata.name_type             = BLE_ADVDATA_NO_NAME;
-        ai.advdata.p_manuf_specific_data = &manuf_specific_data;
+        manuf_specific_data.company_identifier = cfg_getCompanyID();
+        // iBeacons are a BLE advert with a specific 'manufacteur specific' block, which is a TLV essentially
+        _ctx.m_beacon_info[0] = APP_BEACON_ADV_DEVICE_TYPE;     // Tag - this is a ibeacon
+        _ctx.m_beacon_info[1] = APP_BEACON_ADV_DATA_LENGTH;     // length of rest of block
+
+        memcpy(&_ctx.m_beacon_info[2], cfg_getUUID(), UUID128_SIZE);
+        _ctx.m_beacon_info[18] = MSB_16(cfg_getMajor_Value());
+        _ctx.m_beacon_info[19] = LSB_16(cfg_getMajor_Value());
+        _ctx.m_beacon_info[20] = MSB_16(cfg_getMinor_Value());
+        _ctx.m_beacon_info[21] = LSB_16(cfg_getMinor_Value());    
+        _ctx.m_beacon_info[22] = makeAdvPowerLevel();
+
+        manuf_specific_data.data.p_data = (uint8_t *) (&_ctx.m_beacon_info[0]);
+        manuf_specific_data.data.size   = APP_BEACON_INFO_LENGTH;
+
+        advdata.name_type             = BLE_ADVDATA_NO_NAME;
+        advdata.p_manuf_specific_data = &manuf_specific_data;
     } else {
-        ai.advdata.name_type             = BLE_ADVDATA_FULL_NAME;
+        advdata.name_type             = BLE_ADVDATA_FULL_NAME;
         // And no addition manuf data so it doesn't look like an ibeacon
     }
 
     // depending on if we accept connections or not, advert data is different
     if (cfg_getConnectable()) {
-        ai.advdata.flags                 = (BLE_GAP_ADV_FLAG_LE_GENERAL_DISC_MODE |
+        advdata.flags                 = (BLE_GAP_ADV_FLAG_LE_GENERAL_DISC_MODE |
                                         BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED);
-        ai.srdata.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
-        ai.srdata.uuids_complete.p_uuids  = m_adv_uuids;
+        srdata.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
+        srdata.uuids_complete.p_uuids  = m_adv_uuids;
     } else {
-        ai.advdata.flags                 = (BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED);
+        advdata.flags                 = (BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED);
         // Not connectable, no uuids advertised to avoid access to NUS
-        ai.srdata.uuids_complete.uuid_cnt = 0;
-        ai.srdata.uuids_complete.p_uuids  = NULL;
+        srdata.uuids_complete.uuid_cnt = 0;
+        srdata.uuids_complete.p_uuids  = NULL;
     }
-    ai.srdata.name_type = BLE_ADVDATA_FULL_NAME;
-    ai.srdata.short_name_len = 8;      // get at least id part (maj/min in hex)
-    ai.srdata.p_tx_power_level = &txPowerLevel;
+    srdata.name_type = BLE_ADVDATA_FULL_NAME;
+    srdata.short_name_len = 8;      // get at least id part (maj/min in hex)
+    srdata.p_tx_power_level = p_txPower;
 
-    // Give both options for advert speed (the one used depends on whether isIBeaconning() is true or not)
-    ai.config.ble_adv_fast_enabled  = true;
-    ai.config.ble_adv_fast_interval = MSEC_TO_UNITS(cfg_getADV_IND(), UNIT_0_625_MS);
-    ai.config.ble_adv_fast_timeout  = APP_ADV_TIMEOUT_IN_SECONDS;
-    ai.config.ble_adv_slow_enabled = true;
-    ai.config.ble_adv_slow_interval = MSEC_TO_UNITS(APP_ADV_INTERVAL_MS_SLOW, UNIT_0_625_MS);     //1285*1.6;
-    ai.config.ble_adv_slow_timeout  = APP_ADV_TIMEOUT_IN_SECONDS;
- 
-//    err_code = ble_advdata_set(&advdata, NULL); Done in ble_advertising_init using advdata
-//    APP_ERROR_CHECK(err_code);
-    // TODO : using ble_advertising module means out ibeacons are always flagged as connectable 
-    // (never sets type to BLE_GAP_ADV_TYPE_ADV_NONCONN_IND)
-    
-    err_code = ble_advertising_init(p_adv_ctx, &ai);
+    err_code = ble_advertising_advdata_update(p_adv_ctx, &advdata, &srdata);
     APP_ERROR_CHECK(err_code);
 }
  
- 
+
 
 static bool advertising_check_start()
 {
@@ -758,14 +763,19 @@ static bool advertising_check_start()
     // password check has not been validated
     cfg_resetPasswordOk();
     // create context
-    advertising_setup(&_ctx.adv_ctx);
+    _ctx.txPower = cfg_getTXPOWER_Level();
+    advertising_update(&_ctx.adv_ctx, &_ctx.txPower);
     // Change name
+    char* advname = cfg_getAdvName();
+    memset(_ctx.advName, 0, sizeof(_ctx.advName));
+    strncpy(_ctx.advName, advname, sizeof(_ctx.advName)-1);
     sd_ble_gap_device_name_set(&sec_mode,
-                            (const uint8_t *)(cfg_getAdvName()),
-                                strlen(cfg_getAdvName()));
+                            (const uint8_t *)_ctx.advName,
+                                strlen(_ctx.advName));
+    log_info("set advName to %s",_ctx.advName);
 
     // Change tx power level
-    sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_ADV, _ctx.adv_ctx.adv_handle, cfg_getTXPOWER_Level());
+    // NOT RUIRED? sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_ADV, _ctx.adv_ctx.adv_handle, cfg_getTXPOWER_Level());
 
     // only advertise if we want to be connectable, or we are ibeaconning, and we are NOT scanning
     if ((cfg_getConnectable() || ibb_isBeaconning())) // && ibs_is_scan_active()==false)
@@ -824,31 +834,153 @@ void app_reset_request() {
 void app_setFlashBusy() {
     _ctx.flashBusy = true;      // someone somewhere is writing to the flash
 }
+void app_setFlashIdle() {
+    _ctx.flashBusy = false;
+}
 bool app_isFlashBusy() {
     return _ctx.flashBusy;      // they would like to know if its busy right now
 }
 
+static void button1_event(uint8_t pin_no, uint8_t button_action) {
+    if (button_action==APP_BUTTON_RELEASE) {
+        // send event to main board
+        // TODO
+        bsp_board_led_invert(1);
+    }
+}
+
+static void button2_event(uint8_t pin_no, uint8_t button_action) {
+    if (button_action==APP_BUTTON_RELEASE) {
+        // send event to main board
+        // TODO
+        bsp_board_led_invert(1);
+    }
+
+}
+static void button3_event(uint8_t pin_no, uint8_t button_action) {
+    if (button_action==APP_BUTTON_RELEASE) {
+        // send event to main board
+        // TODO
+        bsp_board_led_invert(1);
+    }
+
+}
+
+static void init_stage(int s) {
+    switch(s) {
+        case 0:
+            for(int i=0;i<2;i++) {
+                bsp_board_led_on(0);
+                nrf_delay_ms(500);
+                bsp_board_led_off(0);
+                nrf_delay_ms(500);
+            }
+            break;
+        case 1:
+            bsp_board_led_on(0);
+            bsp_board_led_off(1);
+            nrf_delay_ms(1000);
+            break;
+        case 2:
+            bsp_board_led_off(0);
+            bsp_board_led_on(1);
+            nrf_delay_ms(1000);
+            break;
+        case 3:
+            bsp_board_led_on(0);
+            bsp_board_led_on(1);
+            nrf_delay_ms(1000);
+            break;
+        case 4:
+            bsp_board_led_off(0);
+            bsp_board_led_off(1);
+            nrf_delay_ms(200);
+            for(int i=0;i<5;i++) {
+                bsp_board_led_on(1);
+                nrf_delay_ms(200);
+                bsp_board_led_off(1);
+                nrf_delay_ms(200);
+            }
+            break;
+        case 5:
+            bsp_board_led_on(0);
+            bsp_board_led_off(1);
+            nrf_delay_ms(1000);
+            break;
+        case 6:
+            bsp_board_led_off(0);
+            bsp_board_led_on(1);
+            nrf_delay_ms(1000);
+            break;
+        case 7:
+            bsp_board_led_on(0);
+            bsp_board_led_on(1);
+            nrf_delay_ms(1000);
+            break;
+        case 255:
+            while(true) {
+                bsp_board_led_on(0);
+                bsp_board_led_on(1);
+                nrf_delay_ms(100);
+                bsp_board_led_off(0);
+                bsp_board_led_off(1);
+                nrf_delay_ms(100);
+            }
+            break;
+        default:
+            for(int i=0;i<10;i++) {
+                bsp_board_led_on(0);
+                bsp_board_led_on(1);
+                nrf_delay_ms(200);
+                bsp_board_led_off(0);
+                bsp_board_led_off(1);
+                nrf_delay_ms(200);
+            }
+            break;
+
+    }
+}
 int main(void)
 {
+    /* Configure board. */
+    bsp_board_init(BSP_INIT_LEDS);
+    init_stage(0);
+
     system_init();
+
+    init_stage(1);
 
     // Init uart asap in case using for logs also
     comm_uart_init(); 
 
+    init_stage(2);
 #ifdef RELEASE_BUILD
     wlog_init(-1);      // replace by 0 to get logs on uart
 #else 
-    wlog_init(-1);      // replace by 0 to get logs on uart - warning will disrupt remote guy if connected..
+    wlog_init(0);      // replace by 0 to get logs on uart - warning will disrupt remote guy if connected..
+    _logs=true;
 #endif
+
+    log_error("STARTING");
+    init_stage(3);
+
     cfg_init();              
     log_info("config/log init done");
+
+    init_stage(4);
     
     ble_init();
     log_info("ble system init done");
+
+    init_stage(5);
+
     // Tell host we are ready to rock
     comm_uart_tx((uint8_t *)"READY\r\n",7, NULL);
     // Init adv parameters and start if required
     advertising_check_start();
+    log_info("advertising setup done");
+
+    init_stage(6);
 
     //todo remove uart disabled at 10s of ibeaconning for power
     /*                    
@@ -859,7 +991,9 @@ int main(void)
         app_timer_start(m_deinit_uart_delay, deinit_delay, NULL);
     */
 
-   log_info("waiting for commands");
+    log_info("waiting for commands");
+    init_stage(7);
+
     for (;;)
     {        
         if (_ctx.resetRequested)

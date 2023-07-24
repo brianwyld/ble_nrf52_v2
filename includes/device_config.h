@@ -60,5 +60,12 @@ int cfg_iterateKeys(void* odev, PK_CB_T pkcb);
 #define DCFG_KEY_CONNECTABLE (DCFG_KEY_BASE + 0x08)
 #define DCFG_KEY_IBEACONNING (DCFG_KEY_BASE + 0x09)
 
+/* Card types */
+#define CARD_TYPE_WFILLE_REV_CD (4)
+#define CARD_TYPE_WFILLE_REV_E (5)
+#define CARD_TYPE_WBLE_RECT (10)
+#define CARD_TYPE_WBLE_ROUND (11)
+#define CARD_TYPE_IF_BLE_NFC (20)
+
 //EOF
 #endif  /* H_DEVICE_CONFIG_H */

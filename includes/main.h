@@ -23,6 +23,7 @@ typedef bool (*PRINTF_FN_T)(void* dev, const char* l, ...);
 
 void app_reset_request();
 void app_setFlashBusy();
+void app_setFlashIdle();
 bool app_isFlashBusy();
 
 bool ibb_isBeaconning();

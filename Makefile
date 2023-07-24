@@ -373,31 +373,39 @@ itall: clean release hex bin disassemble size
 
 itall_debug: clean debug hex bin disassemble size
 
+# incremental dev, just rebuild changed source files and reflash to board
+dev: debug hex bin disassemble size flash
+
 test:
 	$(error $(COBJS))
 
 # NOTE flash/debug rules here for info, untested in specific project
 # Reset target
 reset:
-	# $(OPENOCD) -s $(OPENOCD_SCRIPT) -f $(CONFIGDIR)/openocd/init_reset.cfg -c "init; reset; shutdown"
-	openocd -f $(CONFIGDIR)/openocd/init_reset.cfg -c "init; reset; shutdown"
-	
+	@echo Reset board...
+	nrfjprog -f nrf52 --reset
 	
 flash: flash_program
+flashall: flash_erase flash_softdevice flash_program reset
+
 flash_program:
-	openocd -d0 -f $(CONFIGDIR)/openocd/init.cfg -c "program $(OUTPUT_DIRFILE).elf verify reset exit; shutdown"
-	
-# Show bank flash 0 erased or not
-flash_check:
-	@$(OPENOCD) -s $(OPENOCD_SCRIPT) -f $(CONFIGDIR)/openocd/init.cfg -f $(CONFIGDIR)/openocd/flash_check.cfg
+	@echo Flashing: $(OUTPUT_DIRFILE).hex
+	nrfjprog -f nrf52 --program $(OUTPUT_DIRFILE).hex --sectorerase --verify
+	nrfjprog -f nrf52 --reset
+
+flash_boot:
+	# THIS DOESNT WORK - NO RUN AFTER
+	@echo Flashing: hexs\bootloader.hex
+	nrfjprog -f nrf52 --program $(ROOT_DIR)\hexs\bootloader.hex --sectorerase --verify
+
+flash_softdevice:
+	@echo Flashing: s132_nrf52_7.2.0_softdevice.hex from sdk
+	nrfjprog -f nrf52 --program $(SDKROOT)\components\softdevice\s132\hex\s132_nrf52_7.2.0_softdevice.hex --sectorerase --verify
 
 # Erase flash
 flash_erase:
-	@$(OPENOCD) -s $(OPENOCD_SCRIPT) -f $(CONFIGDIR)/openocd/init.cfg -f $(CONFIGDIR)/openocd/flash_erase.cfg
-
-# Erase flash and eeprom
-erase_all:
-	@$(OPENOCD) -s $(OPENOCD_SCRIPT) -f $(CONFIGDIR)/openocd/init.cfg -f $(CONFIGDIR)/openocd/erase_all.cfg
+	@echo Erasing flash...
+	nrfjprog -f nrf52 --eraseall
 	
 ## Flash target
 #st_flash_program:bin

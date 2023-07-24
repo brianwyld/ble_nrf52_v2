@@ -11,9 +11,10 @@
 
 #include "bsp_minew_nrf52.h"
 #include "nrf_soc.h"
+#include "nrf_delay.h"
 #include "app_uart.h"
 #include "main.h"
-
+#include "wutils.h"
 
 // UARTs config
 static struct {
@@ -85,28 +86,6 @@ int hal_bsp_uart_tx(int uartNb, uint8_t* d, int len) {
         return 0;
     }
     return -1;
-}
-
-// UART enable IO
-bool hal_bsp_comm_uart_active_request() {
-    // Should the external comm uart be init or deinit?
-    return true;
-}
-
-// LED config
-void hal_bsp_leds_init(void) {
-
-}
-void hal_bsp_leds_deinit(void) {
-    
-}
-
-// buttons
-void hal_bsp_buttons_init(void) {
-
-}
-void hal_bsp_buttons_deinit(void) {
-    
 }
 
 // NVM for config management
@@ -189,6 +168,23 @@ bool hal_bsp_nvmWrite16(uint16_t off, uint16_t v) {
     return ret;
 }
 
+static bool wait_for_flash(uint32_t timeout_ms) {
+    uint32_t evt=0;
+    // Convert timeout to n loops of delay of 10ms
+    uint32_t nloops = (timeout_ms/10)+1;
+    for(int i=0;i<nloops;i++) {
+        uint32_t err_code=sd_evt_get(&evt);
+        if (err_code==NRF_SUCCESS) {
+            if (evt==NRF_EVT_FLASH_OPERATION_SUCCESS ||
+                    evt==NRF_EVT_FLASH_OPERATION_ERROR) {
+                return true;
+            }
+        } else {
+            nrf_delay_ms(10);
+        }
+    }
+    return false;
+}
 bool hal_bsp_nvmWrite(uint16_t off, uint8_t len, uint8_t* buf) {
     // If writing a block to offset 0, we assume you are writing the entire page rather than just bits
     if (off==0) {
@@ -198,27 +194,37 @@ bool hal_bsp_nvmWrite(uint16_t off, uint8_t len, uint8_t* buf) {
         app_setFlashBusy();
         do
         {
+            log_info("erasing page %d", ((uint32_t)addr_u32aligned)/1024);
             status = sd_flash_page_erase(((uint32_t)addr_u32aligned)/1024);
         } while (status == NRF_ERROR_BUSY);     // In case its still processing the previous write
-        while(app_isFlashBusy()) {
-            sd_app_evt_wait();
+        if (wait_for_flash(1000)) {
+            log_info("page erased, got system event to say done");
+        } else {
+            log_warn("page erased but timeout waiting for done event");
         }
-        // Write block
         app_setFlashBusy();
         do
         {
+            log_info("writing new page");
             status = sd_flash_write(addr_u32aligned, (uint32_t*)buf, (len/4)+1);        // Write rounded up to nearest 32 bit length
         } while (status == NRF_ERROR_BUSY);     // In case its still processing the previous write
-        while(app_isFlashBusy()) {
-            sd_app_evt_wait();
+        log_info("page written, waiting for system event to say done");
+        if (wait_for_flash(1000)) {
+            log_info("page written, got system event to say done");
+        } else {
+            log_warn("page written but timeout waiting for done event");
         }
+        app_setFlashIdle();
         return true;
     } else {
+        app_setFlashBusy();
         // Writing N bytes, worth the optimisation? TODO later
+        log_info("writing block %d bytes, <page...", len);
         bool ret = true;
         for(int i=0;i<len;i++) {
             ret &= hal_bsp_nvmWrite8(off+i, *(buf+i));
         }
+        app_setFlashIdle();
         return ret;
     }
 }

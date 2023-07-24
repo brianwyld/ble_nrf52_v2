@@ -39,14 +39,14 @@ static struct {
 static void uart_event_handler(app_uart_evt_t * p_event);
 static void uart_gpio_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action);
 static bool uart_gpio_init();
+static bool uart_has_enable();
 
 /**@brief Function for initializing the UART.
  */
 bool comm_uart_init() {
     _ctx.uartNb = COMM_UART_NB;
-//    _ctx.isOpen = hal_bsp_uart_init(_ctx.uartNb, COMM_UART_BAUDRATE, uart_event_handler);
 
-    // TODO need way to decide if io input to decide if uart is to be enabled (revE board only)
+    // some cards have a way to decide if io input to decide if uart is to be enabled (eg revE board or wble rect board)
     // setup input on pin X, used to signal remote end wants to talk or not
     uart_gpio_init();
     // Check if uart is initialled running or not
@@ -182,26 +182,21 @@ static void uart_event_handler(app_uart_evt_t * p_event)
 
 static bool uart_gpio_init() {
     uint32_t err_code;
-    nrf_drv_gpiote_out_config_t led1_config = GPIOTE_CONFIG_OUT_SIMPLE(false);
-    err_code = nrf_drv_gpiote_out_init(BSP_LED_0, &led1_config);
-    if (err_code!=NRF_SUCCESS) {
-        return false;
-    }
-    nrf_drv_gpiote_out_config_t led2_config = GPIOTE_CONFIG_OUT_SIMPLE(false);
-    err_code = nrf_drv_gpiote_out_init(BSP_LED_1, &led2_config);
+    nrf_drv_gpiote_out_config_t led_config = GPIOTE_CONFIG_OUT_SIMPLE(false);
+    err_code = nrf_drv_gpiote_out_init(BSP_LED_1, &led_config);
     if (err_code!=NRF_SUCCESS) {
         return false;
     }
     // Only define uart control io pin if on a card supporting it
-    if (cfg_getCardType()>=5 && cfg_getCardType()<10) {
+    if (uart_has_enable()) {
         nrf_drv_gpiote_in_config_t vccuart_config = GPIOTE_CONFIG_IN_SENSE_TOGGLE(false);
         vccuart_config.pull = NRF_GPIO_PIN_PULLDOWN;
-        err_code = nrf_drv_gpiote_in_init(BSP_VCCUART, &vccuart_config, uart_gpio_handler);
+        err_code = nrf_drv_gpiote_in_init(BSP_START_UART, &vccuart_config, uart_gpio_handler);
         if (err_code!=NRF_SUCCESS) {
             return false;
         }
         // Must enable 'event' for input io to be seen
-        nrf_drv_gpiote_in_event_enable(BSP_VCCUART, true);
+        nrf_drv_gpiote_in_event_enable(BSP_START_UART, true);
     }
     return true;
 }
@@ -209,19 +204,25 @@ static bool uart_gpio_init() {
 // Handle level change on the input IO used to enable/disable uart
 static void uart_gpio_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
     // Get current state of enable pin if on a card that supports this (revE fille and onwards)
-    if (cfg_getCardType()>=5 && cfg_getCardType()<10) {
-        bool state = nrf_drv_gpiote_in_is_set(BSP_VCCUART);
+    if (uart_has_enable()) {
+        bool state = nrf_drv_gpiote_in_is_set(BSP_START_UART);
         if (state==false) {
             _ctx.isOpen = false;
             hal_bsp_uart_deinit(_ctx.uartNb);
-            nrf_drv_gpiote_out_clear(BSP_LED_0);
+            nrf_drv_gpiote_out_clear(BSP_LED_1);
         } else {
             _ctx.isOpen = hal_bsp_uart_init(_ctx.uartNb, COMM_UART_BAUDRATE, uart_event_handler);
-            nrf_drv_gpiote_out_set(BSP_LED_0);
+            nrf_drv_gpiote_out_set(BSP_LED_1);
         }
     } else {
         _ctx.isOpen = hal_bsp_uart_init(_ctx.uartNb, COMM_UART_BAUDRATE, uart_event_handler);
+        nrf_drv_gpiote_out_set(BSP_LED_1);
     }
+}
+
+static bool uart_has_enable() {
+    int ct = cfg_getCardType();
+    return (ct==CARD_TYPE_WFILLE_REV_E);        // || ct==CARD_TYPE_WBLE_RECT || ct==CARD_TYPE_IF_BLE_NFC);
 }
 
 /* to get libc to be ok */
