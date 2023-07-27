@@ -10,8 +10,8 @@
  * either express or implied. See the License for the specific 
  * language governing permissions and limitations under the License.
 */
-#ifndef H_COMM_BLE_H
-#define H_COMM_BLE_H
+#ifndef H_BLE_WAKEHOST_H
+#define H_BLE_WAKEHOST_H
 
 #include <inttypes.h>
 
@@ -19,19 +19,12 @@
 extern "C" {
 #endif
 
-uint32_t comm_ble_init(void);
-void comm_ble_getuuid(ble_uuid_t* p_uuid);
-void comm_ble_local_disconnected(void);
-void comm_ble_remote_connected(uint16_t conn_handle);
-void comm_ble_remote_disconnected(uint16_t conn_handle);
-void comm_ble_set_max_data_len(uint16_t ml);
-bool comm_ble_isConnected();
-// Tx line. returns number of bytes not sent due to flow control. 
-int comm_ble_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready);
-void comm_ble_print_stats(PRINTF_FN_T printf, void* odev);
-
+/**@brief wakeup event handler callback type. */
+typedef void (* ble_wakeup_handler_t) (const void * wakedata, uint32_t wd_len);
+uint32_t ble_wakeup_init(ble_wakeup_handler_t whandler);
+void ble_wakeup_getuuid(ble_uuid_t* p_uuid);
 #ifdef __cplusplus
 }
 #endif
 
-#endif  /* H_COMM_BLE_H */
+#endif  /* H_BLE_WAKEHOST_H */

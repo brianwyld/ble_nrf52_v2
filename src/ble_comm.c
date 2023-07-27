@@ -7,8 +7,9 @@
 #include "bsp_minew_nrf52.h"
 //#include "ble_nus_c.h"
 #include "ble_nus.h"
-#include "ble_hci.h"
-#include "ble_db_discovery.h"
+//#include "ble_hci.h"
+//#include "ble_db_discovery.h"
+#include "nrf_delay.h"
 
 #include "wutils.h"
 
@@ -18,11 +19,13 @@
 
 #define MAX_RX_LINE (60)
 
+// NUS hooks observer for BLE events itself
+BLE_NUS_DEF(m_nus, NRF_SDH_BLE_TOTAL_LINK_COUNT);                                   /**< BLE NUS service instance. */
+
 static struct {
     bool connected;
     uint16_t conn_handle;
-    ble_nus_t               m_nus;                /**< Structure to identify the Nordic UART Service (as a server)*/
-//    ble_nus_c_t             m_nus_c;               /**< Instance of NUS client service (as client). */
+    uint16_t   m_ble_nus_max_data_len;
     uint8_t rx_buf[MAX_RX_LINE];
     uint8_t rx_index;
     UART_TX_READY_FN_T tx_ready_fn;     // in case caller wants to be told
@@ -32,7 +35,9 @@ static struct {
     uint32_t txL;
     uint32_t txLfc;
     uint32_t txLemp;
-} _ctx;
+} _ctx = {
+    .m_ble_nus_max_data_len = BLE_GATT_ATT_MTU_DEFAULT - 3
+};
 
 // predecs
 static void comm_ble_nus_data_handler(ble_nus_evt_t * p_evt);
@@ -40,26 +45,21 @@ static void comm_ble_nus_data_handler(ble_nus_evt_t * p_evt);
 /**@brief Function for initializing the BLE as a NUS slave (remote connects to me) and a NUS cient.
  * NUS client not yet supported
  */
-bool comm_ble_init(void) {
-    uint32_t       err_code;
+uint32_t comm_ble_init(void) {
     ble_nus_init_t nus_init;
  
-    memset(&nus_init, 0, sizeof(nus_init));
- 
-    nus_init.data_handler = comm_ble_nus_data_handler;
     _ctx.connected = false;
     _ctx.conn_handle=BLE_CONN_HANDLE_INVALID;
 
-    err_code = ble_nus_init(&_ctx.m_nus, &nus_init);
-    APP_ERROR_CHECK(err_code);
+    memset(&nus_init, 0, sizeof(nus_init)); 
+    nus_init.data_handler = comm_ble_nus_data_handler;
+    log_info("Init NUS service..");
+    return ble_nus_init(&m_nus, &nus_init);
+}
 
-/* NUS client functionality not yet supported - might have to be another block?
-    ble_nus_c_init_t nus_c_init;
-    memset(&nus_c_init, 0, sizeof(nus_c_init));
-    err_code = ble_nus_c_init(&_ctx.m_nus_c, &nus_c_init);
-    APP_ERROR_CHECK(err_code);
-    */
-    return true;
+void comm_ble_getuuid(ble_uuid_t* p_uuid) {
+    p_uuid->type = m_nus.uuid_type;
+    p_uuid->uuid = BLE_UUID_NUS_SERVICE;
 }
 
 // Remote connect
@@ -101,6 +101,9 @@ void comm_ble_local_disconnected(void) {
     _ctx.rx_index = 0;
 }
 
+void comm_ble_set_max_data_len(uint16_t ml) {
+    _ctx.m_ble_nus_max_data_len = ml;
+}
 // are we currently connected?
 bool comm_ble_isConnected() {
     return _ctx.connected;
@@ -115,14 +118,15 @@ int comm_ble_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
     // check if disconnecting and ignore (as can't disconnect from uart...)
     if (data!=NULL)  {
         log_info("nus:send data to nus");
-        // Send to NUS : we need to cut it up into BLE_NUS_MAX_DATA_LEN sized blocks
+        // Send to NUS : we need to cut it up into BLE_NUS_MAX_DATA_LEN sized blocks (actually as set by GATT nego)
         int off = 0;
         do {
             // Length for this block
-            uint16_t tlen = ((len-off)>BLE_NUS_MAX_DATA_LEN)?BLE_NUS_MAX_DATA_LEN:(len-off);
+//            uint16_t tlen = ((len-off)>BLE_NUS_MAX_DATA_LEN)?BLE_NUS_MAX_DATA_LEN:(len-off);
+            uint16_t tlen = ((len-off)>_ctx.m_ble_nus_max_data_len )?_ctx.m_ble_nus_max_data_len:(len-off);
             if (tlen>0) {
-                uint32_t err_code = ble_nus_data_send(&_ctx.m_nus, &data[off], &tlen, _ctx.conn_handle);
-        //        err_code = ble_nus_c_string_send(&_ctx.m_nus_c, data, len);
+                uint32_t err_code = ble_nus_data_send(&m_nus, &data[off], &tlen, _ctx.conn_handle);
+        //        err_code = ble_nus_c_string_send(&m_nus_c, data, len);
                 if (err_code == NRF_ERROR_INVALID_STATE) {
                     // NUS tells us we are disconnected
                     comm_ble_remote_disconnected(_ctx.conn_handle);
@@ -157,9 +161,6 @@ int comm_ble_tx(uint8_t* data, int len, UART_TX_READY_FN_T tx_ready) {
     return 0;       // all sent
 }
 
-void comm_ble_dispatch(const ble_evt_t * p_ble_evt) {
-    ble_nus_on_ble_evt(p_ble_evt, &_ctx.m_nus);
-}
 
 void comm_ble_print_stats(PRINTF_FN_T printf, void* odev) {
     (*printf)(odev, "B:%d,%d,%d,%d,%d, %d", _ctx.rxC, _ctx.rxL, _ctx.txC, _ctx.txL, _ctx.txLfc, _ctx.txLemp);

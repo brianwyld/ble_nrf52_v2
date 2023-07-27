@@ -27,13 +27,18 @@
 
 #include "ble.h"
 #include "ble_conn_params.h"
-#include "ble_db_discovery.h"
+//#include "ble_db_discovery.h"
 #include "ble_gap.h"
 #include "ble_nus.h"
-#include "ble_hci.h"
-#include "ble_gatts.h"
+#include "ble_bas.h"
+#include "ble_dis.h"
+#include "ble_bas.h"
+//#include "ble_hci.h"
+//#include "ble_gatts.h"
 #include "ble_advdata.h"
 #include "ble_advertising.h"
+#include "nrf_ble_gatt.h"
+#include "nrf_ble_qwr.h"
 #include "nrf_sdh.h"
 #include "nrf_sdh_soc.h"
 #include "nrf_delay.h"
@@ -49,9 +54,18 @@
 #include "main.h"
 #include "comm_uart.h"
 #include "comm_ble.h"
+#include "ble_wakehost.h"
 #include "device_config.h"
 
 #include "ibs_scan.h"
+
+
+#define DEVICE_NAME                     "Smart Badge"                            /**< Name of device. Will be included in the advertising data. */
+#define MANUFACTURER_NAME               "Infrafon"                   /**< Manufacturer. Will be passed to Device Information Service. */
+#define MODEL_NUM                       "CC1"                        /**< Model number. Will be passed to Device Information Service. */
+// TODO get own manufacturer/org ids
+#define MANUFACTURER_ID                 0x1122334455                            /**< Manufacturer ID, part of System ID. Will be passed to Device Information Service. */
+#define ORG_UNIQUE_ID                   0x667788                                /**< Organizational Unique ID, part of System ID. Will be passed to Device Information Service. */
 
 #define IS_SRVC_CHANGED_CHARACT_PRESENT 0   /**< Include the service_changed characteristic. If not enabled, the server's database cannot be changed for the lifetime of the device. */
 
@@ -64,13 +78,7 @@
 #define APP_BLE_OBSERVER_PRIO           3                                           /**< Application's BLE observer priority. You shouldn't need to modify this value. */
 
 #define APP_FEATURE_NOT_SUPPORTED       BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2        /**< Reply when unsupported features are requested. */
-
-// BW TODO seems like seeting to BLE_UUID_TYPE_VENDOR_BEGIN is not allowed any more for 16bit UUIDs (sd_uuid_encode fails with invalid type)
-#define NUS_SERVICE_UUID_TYPE   BLE_UUID_TYPE_BLE       //VENDOR_BEGIN      /**< UUID type for the Nordic UART Service (vendor specific). */
- 
-#define APP_ADV_INTERVAL_MS_SLOW        1000                                          /**< The advertising interval when not actively beaconing (in units of ms). */
-#define APP_ADV_TIMEOUT_IN_SECONDS       60                                         /**< The advertising timeout (in units of seconds). */
- 
+  
 #define APP_TIMER_PRESCALER             0                                           /**< Value of the RTC1 PRESCALER register. */ 
  
 #define MIN_CONN_INTERVAL               MSEC_TO_UNITS(20, UNIT_1_25_MS)             /**< Minimum acceptable connection interval (20 ms), Connection interval uses 1.25 ms units. */
@@ -90,13 +98,19 @@
 #define MAX_CONNECTION_INTERVAL MSEC_TO_UNITS(75, UNIT_1_25_MS) /**< Determines maximum connection interval in millisecond. */
 #define SLAVE_LATENCY           0                               /**< Determines slave latency in counts of connection events. */
 #define SUPERVISION_TIMEOUT     MSEC_TO_UNITS(4000, UNIT_10_MS) /**< Determines supervision time-out in units of 10 millisecond. */
- 
+
+#define APP_BATTERY_TIME_PERIOD APP_TIMER_TICKS(10000)           /* convert ms to ticks for apptimer */
 //WBeacon
 #define APP_BEACON_INFO_LENGTH          0x17                                    /**< Total length of information advertised by the Beacon. */
 #define APP_CFG_NON_CONN_ADV_TIMEOUT    0                                   /**< Time for which the device must be advertising in non-connectable mode (in seconds). 0 disables timeout. */
 #define APP_BEACON_ADV_DATA_LENGTH  (0x15)
 #define APP_BEACON_ADV_DEVICE_TYPE (0x02)
 
+// for cycling between advert packet types
+#define APP_ADV_INTERVAL_MS_SLOW        500                                          /**< The advertising interval when not actively beaconing (in units of ms). */
+#define APP_ADV_TIMEOUT_IN_SECONDS       1                                         /**< The advertising timeout (in units of seconds). */
+typedef enum { ADVERT_TYPE_IBEACON=0, ADVERT_TYPE_TELEMETRY, ADVERT_TYPE_LAST } advtype_t;
+// Our applicatio context
 static struct app_context {
     //UART Variables
     uint16_t                m_conn_handle;    /**< Handle of the current GAP connection. */
@@ -106,12 +120,23 @@ static struct app_context {
     uint8_t m_beacon_info[APP_BEACON_INFO_LENGTH]; 
     bool flashBusy;
     bool resetRequested;
-    ble_advertising_t adv_ctx;
     char advName[20];
     int8_t txPower;
+    advtype_t advertType;
 } _ctx = {
     .m_conn_handle = BLE_CONN_HANDLE_INVALID, 
+    .advertType = ADVERT_TYPE_IBEACON,
 };
+/** Nordic service modules are all direct ble event observers - no need to call from our event handler
+ * and their context structures are globals...
+ * 
+ */
+// Timer ids are const pointers to static structures - so nasty
+APP_TIMER_DEF(m_battery_timer_id);                                      /**< Battery timer. */
+BLE_BAS_DEF(m_bas);                                                     /**< Structure used to identify the battery service. */
+NRF_BLE_GATT_DEF(m_gatt);                                               /**< GATT module instance. */
+NRF_BLE_QWR_DEF(m_qwr);                                                 /**< Context for the Queued Write module.*/
+BLE_ADVERTISING_DEF(m_advertising);                                     /**< Advertising module instance. */
 
 static void sys_evt_handler(uint32_t evt_id, void * p_context);
 static void ble_evt_dispatch(const ble_evt_t * p_ble_evt, void* p_ctx);
@@ -122,7 +147,7 @@ NRF_SDH_SOC_OBSERVER(m_soc_observer, APP_SOC_OBSERVER_PRIO, sys_evt_handler, NUL
 NRF_SDH_BLE_OBSERVER(m_ble_observer, APP_BLE_OBSERVER_PRIO, ble_evt_dispatch, NULL);
 
 static void advertising_init(ble_advertising_t* p_adv_ctx, int8_t* p_txPower);
-static void advertising_update(ble_advertising_t* p_adv_ctx, int8_t* p_txPower);
+static bool advertising_update(ble_advertising_t* p_adv_ctx, int8_t* p_txPower);
 static bool advertising_check_start();
 static uint8_t makeAdvPowerLevel( void );
 
@@ -134,12 +159,11 @@ static app_button_cfg_t button_cfgs[BUTTONS_NUMBER] = {
     { .pin_no = BUTTON_2, .active_state=APP_BUTTON_ACTIVE_HIGH, .pull_cfg=GPIO_PIN_CNF_PULL_Pulldown, .button_handler = button2_event },
 //    { .pin_no = BSP_BUTTON_3, .active_state=APP_BUTTON_ACTIVE_HIGH, .pull_cfg=GPIO_PIN_CNF_PULL_Pulldown, .button_handler = button3_event },
 };
+static void battery_update_timer_cb(void * p_context);
 
 // debug startup helpers
 static void init_stage(int s);
 static bool _logs = false;
-#undef APP_ERROR_CHECK
-#define APP_ERROR_CHECK(d)  if (d!=NRF_SUCCESS) { if (_logs) { log_error("at %d in %s, error code %d", __LINE__, __FILE__, d); } else { init_stage(255);}}
 
 //APP_TIMER_DEF(m_deinit_uart_delay); 
 
@@ -159,9 +183,39 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
     app_error_handler(DEAD_BEEF, line_num, p_file_name);
 }
 
-typedef enum { INDICATE_IDLE, INDICATE_ADVERTISING, INDICATE_ADVERTISING_SLOW, INDICATE_CONNECTED } IND_e;
+
+/**@brief Function for handling Service errors.
+ *
+ * @details A pointer to this function will be passed to each service which may need to inform the
+ *          application about an error.
+ *
+ * @param[in] nrf_error  Error code containing information about what went wrong.
+ */
+static void service_error_handler(uint32_t nrf_error)
+{
+    APP_ERROR_HANDLER(nrf_error);
+}
+
+/**@brief Function for handling Queued Write Module errors.
+ *
+ * @details A pointer to this function will be passed to each service which may need to inform the
+ *          application about an error.
+ *
+ * @param[in]   nrf_error   Error code containing information about what went wrong.
+ */
+static void nrf_qwr_error_handler(uint32_t nrf_error)
+{
+    APP_ERROR_HANDLER(nrf_error);
+}
+
+typedef enum { 
+    INDICATE_STARTUP_0, INDICATE_STARTUP_1, INDICATE_STARTUP_2, INDICATE_STARTUP_3, INDICATE_STARTUP_4, INDICATE_STARTUP_5, INDICATE_STARTUP_6,INDICATE_STARTUP_7, 
+    INDICATE_HALT, 
+    INDICATE_IDLE, INDICATE_ADVERTISING_IBEACON, INDICATE_ADVERTISING_TELEMETERY, INDICATE_CONNECTED } IND_e;
 
 void led_indication(IND_e ind) {
+    init_stage(ind);
+    log_info("led : state %d",ind);
     // TODO
 }
 
@@ -178,6 +232,10 @@ static void sleep_mode_enter(void)
     APP_ERROR_CHECK(err_code);
 }
 
+/* event from BAS service */
+static void bas_evt_handler(ble_bas_t * p_bas, ble_bas_evt_t * p_evt) {
+    log_info("bas event %d", p_evt->evt_type);
+}
 
 /**@brief Function for handling an event from the Connection Parameters Module.
  *
@@ -226,19 +284,13 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
     {
         case BLE_ADV_EVT_FAST:
             log_info("evt:advertsing FAST");
-            // use leds if present to indicate state
-            led_indication(INDICATE_ADVERTISING);
             break;
         case BLE_ADV_EVT_SLOW:
             log_info("evt:advertsing SLOW");
-            // use leds if present to indicate state
-            led_indication(INDICATE_ADVERTISING_SLOW);
             // if not being an ibeacon we are sending just NUS adverts
             break;
         case BLE_ADV_EVT_IDLE:
             log_info("evt:advertsing IDLE");
-            // use leds if present to indicate state
-            led_indication(INDICATE_IDLE);
         // BW : no sleeping on this job TODO check
 //            sleep_mode_enter();
         break;
@@ -259,16 +311,8 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
  */
 static void ble_evt_dispatch(const ble_evt_t * p_ble_evt, void* p_ctx)
 {
-    log_info("ble event %d",p_ble_evt->header.evt_id);
-    // First dispatch to other services to see if they need to process it
-    // Dispatch to ble stack services if we want to be connected
-    //ble_conn_params_on_ble_evt(p_ble_evt);
-    ble_advertising_on_ble_evt(p_ble_evt, &_ctx.adv_ctx);
-    comm_ble_dispatch(p_ble_evt);           // For NUS service (we are slave)
-//        comm_ble_c_dispatch(p_ble_evt);       // When discovering peers for NUS client connections
-
-    // If we are scanning then make db of remote guys be up to date
-//    ble_db_discovery_on_ble_evt(&_ctx.m_ble_db_discovery, p_ble_evt);
+//    log_info("ble event %d",p_ble_evt->header.evt_id);
+    // Note nordic services now register their own observers so don't need to call them here
 
     // Now our own specific processing
     uint32_t err_code;
@@ -278,15 +322,26 @@ static void ble_evt_dispatch(const ble_evt_t * p_ble_evt, void* p_ctx)
         case BLE_GAP_EVT_CONNECTED:
             log_info("evt:gap connect");
             // Only allow the connection if we are configured to allow it and there is not already someone connected
-            if (cfg_getConnectable() && _ctx.m_conn_handle==BLE_CONN_HANDLE_INVALID) {
-                led_indication(INDICATE_CONNECTED);
-                // Stop advertising, we only let 1 cnx at a time
-                sd_ble_gap_adv_stop(_ctx.adv_ctx.adv_handle);
-                _ctx.m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
-                // password check has not been validated for this connection
-                cfg_resetPasswordOk();
+            if (cfg_getConnectable()) {
+                if (_ctx.m_conn_handle==BLE_CONN_HANDLE_INVALID) {
+                    led_indication(INDICATE_CONNECTED);
+                    // Stop advertising, we only let 1 cnx at a time
+                    //sd_ble_gap_adv_stop(_ctx.adv_ctx.adv_handle);
+                    _ctx.m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
+                    err_code = nrf_ble_qwr_conn_handle_assign(&m_qwr, _ctx.m_conn_handle);
+                    APP_ERROR_CHECK(err_code);
+                    // password check has not been validated for this connection
+                    cfg_resetPasswordOk();
+                    log_info("evt:gap connect - connected");
+                } else {
+                    // Not allowed to connect
+                    log_info("evt:gap connect REJECTED as connection already established");
+                    err_code = sd_ble_gap_disconnect(_ctx.m_conn_handle, BLE_HCI_CONN_INTERVAL_UNACCEPTABLE);
+                    APP_ERROR_CHECK(err_code);
+                }
             } else {
                 // Not allowed to connect
+                log_info("evt:gap connect REJECTED as configured non-connectable");
                 err_code = sd_ble_gap_disconnect(_ctx.m_conn_handle, BLE_HCI_CONN_INTERVAL_UNACCEPTABLE);
                 APP_ERROR_CHECK(err_code);
             }
@@ -436,6 +491,26 @@ static void sys_evt_handler(uint32_t evt_id, void * p_context)
     }
 }
 
+
+
+/**@brief Function for handling events from the GATT library. */
+static void gatt_evt_handler(nrf_ble_gatt_t * p_gatt, nrf_ble_gatt_evt_t const * p_evt)
+{
+    if ((_ctx.m_conn_handle == p_evt->conn_handle) && (p_evt->evt_id == NRF_BLE_GATT_EVT_ATT_MTU_UPDATED))
+    {
+        uint16_t ble_nus_max_data_len = p_evt->params.att_mtu_effective - OPCODE_LENGTH - HANDLE_LENGTH;
+        comm_ble_set_max_data_len(ble_nus_max_data_len);
+        log_info("Data len is set to 0x%X(%d)", ble_nus_max_data_len, ble_nus_max_data_len);
+    }
+    log_info("ATT MTU exchange completed. central 0x%x peripheral 0x%x",
+                  p_gatt->att_mtu_desired_central,
+                  p_gatt->att_mtu_desired_periph);
+}
+
+static void wakeup_host(const void * wakedata, uint32_t wd_len) {
+    log_info("WAKEUP HOST request");
+}
+
 /**@brief Function for initializing the Connection Parameters module.
  * one time boot init
  */
@@ -464,9 +539,6 @@ static void gap_params_init(void)
 {
     uint32_t                err_code;
     ble_gap_conn_params_t   gap_conn_params;
-    ble_gap_conn_sec_mode_t sec_mode;
-        
-    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&sec_mode);
  
     memset(&gap_conn_params, 0, sizeof(gap_conn_params));
  
@@ -479,14 +551,74 @@ static void gap_params_init(void)
     APP_ERROR_CHECK(err_code);
 }
 
+
+/**@brief Function for initializing the GATT module.
+ */
+static void gatt_init(void)
+{
+    ret_code_t err_code = nrf_ble_gatt_init(&m_gatt, gatt_evt_handler);
+    APP_ERROR_CHECK(err_code);
+
+    err_code = nrf_ble_gatt_att_mtu_periph_set(&m_gatt, NRF_SDH_BLE_GATT_MAX_MTU_SIZE);
+    APP_ERROR_CHECK(err_code);
+}
+
 /**@brief Function for initializing services that will be used by the application.
  * One time boot init
  */
 static void services_init(void)
-{
+{   
+    uint32_t err_code;
+    ble_bas_init_t     bas_init;
+    ble_dis_init_t     dis_init;
+    ble_dis_sys_id_t   sys_id;
+    nrf_ble_qwr_init_t qwr_init = {0};
+
+    // Initialize Queued Write Module
+    log_info("BLE Queued Wrte (QWR) init");
+    qwr_init.error_handler = nrf_qwr_error_handler;
+    err_code = nrf_ble_qwr_init(&m_qwr, &qwr_init);
+    APP_ERROR_CHECK(err_code);
+
+    // Initialize Battery Service.
+    log_info("BLE Battery service (BAS) init");
+    memset(&bas_init, 0, sizeof(bas_init));
+    // Here the sec level for the Battery Service can be changed/increased.
+    bas_init.bl_rd_sec        = SEC_OPEN;
+    bas_init.bl_cccd_wr_sec   = SEC_OPEN;
+    bas_init.bl_report_rd_sec = SEC_OPEN;
+
+    bas_init.evt_handler          = bas_evt_handler;
+    bas_init.support_notification = true;
+    bas_init.p_report_ref         = NULL;
+    bas_init.initial_batt_level   = 100;
+
+    err_code = ble_bas_init(&m_bas, &bas_init);
+    APP_ERROR_CHECK(err_code);
+
+    // Initialize Device Information Service.
+    log_info("BLE Device info (DIS) init");
+    memset(&dis_init, 0, sizeof(dis_init));
+
+    ble_srv_ascii_to_utf8(&dis_init.manufact_name_str, MANUFACTURER_NAME);
+    ble_srv_ascii_to_utf8(&dis_init.model_num_str, MODEL_NUM);
+
+    sys_id.manufacturer_id            = MANUFACTURER_ID;
+    sys_id.organizationally_unique_id = ORG_UNIQUE_ID;
+    dis_init.p_sys_id                 = &sys_id;
+
+    dis_init.dis_char_rd_sec = SEC_OPEN;
+
+    err_code = ble_dis_init(&dis_init);
+    APP_ERROR_CHECK(err_code);
+
     log_info("BLE UART (NUS) init");
-    log_info("(disabled)");
-    //comm_ble_init();
+    err_code = comm_ble_init();
+    APP_ERROR_CHECK(err_code);
+
+    log_info("BLE Wakeup host service init");
+    err_code = ble_wakeup_init(wakeup_host);
+    APP_ERROR_CHECK(err_code);
 }
 
 /**@brief Function for initializing the BLE stack.
@@ -525,6 +657,9 @@ static void ble_init(void) {
     log_info("ble gap init");
     gap_params_init();
 
+    log_info("ble gaatt init");
+    gatt_init();
+
     log_info("ble services init");
     services_init();
 
@@ -533,7 +668,7 @@ static void ble_init(void) {
     conn_params_init();
 
     log_info("ble advertising params init");
-    advertising_init(&_ctx.adv_ctx, &_ctx.txPower);
+    advertising_init(&m_advertising, &_ctx.txPower);
     log_info("ble stack init done");
 
 }
@@ -569,6 +704,10 @@ static void system_init(void)
     err_code = app_button_enable();
     APP_ERROR_CHECK(err_code);
 
+    err_code = app_timer_create(&m_battery_timer_id,
+                                APP_TIMER_MODE_REPEATED,
+                                battery_update_timer_cb);
+    APP_ERROR_CHECK(err_code);
 
 }
 
@@ -689,61 +828,105 @@ static void advertising_init(ble_advertising_t* p_adv_ctx, int8_t* p_txPower)
  /**@brief Function for updateing the Advertising functionality params
  * call before each start of beaconning to update from config in case it changed
  */
-static void advertising_update(ble_advertising_t* p_adv_ctx, int8_t* p_txPower)
+static bool advertising_update(ble_advertising_t* p_adv_ctx, int8_t* p_txPower)
 {
+    bool ret_ibeacons = false;
     uint32_t               err_code;
     ble_advdata_t advdata;
     ble_advdata_t srdata;
     ble_advdata_manuf_data_t manuf_specific_data; 
-    ble_uuid_t m_adv_uuids[] = {{BLE_UUID_NUS_SERVICE, NUS_SERVICE_UUID_TYPE}};     // Advertise NUS server for at commands over NUS
+    // advertise only basic services in main advert
+    ble_uuid_t m_adv_uuids[] = {
+        {BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE},
+        {BLE_UUID_BATTERY_SERVICE, BLE_UUID_TYPE_BLE},
+    };
+    // and special services in the scan response 
+    /* NO - too long with 2 128but vendor specific IDs!
+    ble_uuid_t m_sr_uuids[] = {
+        {0, 0}, // Placeholder for wakeup service UUID
+        {0, 0}, // placeholder for NUS server for at commands over NUS
+        // TODO add config service?
+    };     
+    // get wakeup service uuid
+    ble_wakeup_getuuid(&m_sr_uuids[0]);
+    // get NUS service uuid
+    comm_ble_getuuid(&m_sr_uuids[1]);
+    */
 
     memset(&advdata, 0, sizeof(advdata));
     memset(&srdata, 0, sizeof(srdata));
 
- 
     // Build advertising data struct to pass into @ref ble_advertising_init.
-    if (cfg_isIBeaconning()) {
-        // Only make our advert look like an ibeacon if we are wanting it to be one
-        manuf_specific_data.company_identifier = cfg_getCompanyID();
-        // iBeacons are a BLE advert with a specific 'manufacteur specific' block, which is a TLV essentially
-        _ctx.m_beacon_info[0] = APP_BEACON_ADV_DEVICE_TYPE;     // Tag - this is a ibeacon
-        _ctx.m_beacon_info[1] = APP_BEACON_ADV_DATA_LENGTH;     // length of rest of block
+    // We switch between advertising content each time so that we can mix iBeacons (if required), telemetry data and connection data.
+    // This happens each time the 'adv_X_timeout' happens, which is after 1s.
+    _ctx.advertType = ((_ctx.advertType+1) % ADVERT_TYPE_LAST);
+    switch (_ctx.advertType) {
+        case ADVERT_TYPE_IBEACON:
+        {
+            if (cfg_isIBeaconning()) {
+                // Only make our advert look like an ibeacon if we are wanting it to be one
+                manuf_specific_data.company_identifier = cfg_getCompanyID();
+                // iBeacons are a BLE advert with a specific 'manufacteur specific' block, which is a TLV essentially
+                _ctx.m_beacon_info[0] = APP_BEACON_ADV_DEVICE_TYPE;     // Tag - this is a ibeacon
+                _ctx.m_beacon_info[1] = APP_BEACON_ADV_DATA_LENGTH;     // length of rest of block
 
-        memcpy(&_ctx.m_beacon_info[2], cfg_getUUID(), UUID128_SIZE);
-        _ctx.m_beacon_info[18] = MSB_16(cfg_getMajor_Value());
-        _ctx.m_beacon_info[19] = LSB_16(cfg_getMajor_Value());
-        _ctx.m_beacon_info[20] = MSB_16(cfg_getMinor_Value());
-        _ctx.m_beacon_info[21] = LSB_16(cfg_getMinor_Value());    
-        _ctx.m_beacon_info[22] = makeAdvPowerLevel();
+                memcpy(&_ctx.m_beacon_info[2], cfg_getUUID(), UUID128_SIZE);
+                _ctx.m_beacon_info[18] = MSB_16(cfg_getMajor_Value());
+                _ctx.m_beacon_info[19] = LSB_16(cfg_getMajor_Value());
+                _ctx.m_beacon_info[20] = MSB_16(cfg_getMinor_Value());
+                _ctx.m_beacon_info[21] = LSB_16(cfg_getMinor_Value());    
+                _ctx.m_beacon_info[22] = makeAdvPowerLevel();
 
-        manuf_specific_data.data.p_data = (uint8_t *) (&_ctx.m_beacon_info[0]);
-        manuf_specific_data.data.size   = APP_BEACON_INFO_LENGTH;
+                manuf_specific_data.data.p_data = (uint8_t *) (&_ctx.m_beacon_info[0]);
+                manuf_specific_data.data.size   = APP_BEACON_INFO_LENGTH;
 
-        advdata.name_type             = BLE_ADVDATA_NO_NAME;
-        advdata.p_manuf_specific_data = &manuf_specific_data;
-    } else {
-        advdata.name_type             = BLE_ADVDATA_FULL_NAME;
-        // And no addition manuf data so it doesn't look like an ibeacon
-    }
-
-    // depending on if we accept connections or not, advert data is different
-    if (cfg_getConnectable()) {
-        advdata.flags                 = (BLE_GAP_ADV_FLAG_LE_GENERAL_DISC_MODE |
-                                        BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED);
-        srdata.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
-        srdata.uuids_complete.p_uuids  = m_adv_uuids;
-    } else {
-        advdata.flags                 = (BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED);
-        // Not connectable, no uuids advertised to avoid access to NUS
-        srdata.uuids_complete.uuid_cnt = 0;
-        srdata.uuids_complete.p_uuids  = NULL;
-    }
-    srdata.name_type = BLE_ADVDATA_FULL_NAME;
-    srdata.short_name_len = 8;      // get at least id part (maj/min in hex)
-    srdata.p_tx_power_level = p_txPower;
-
-    err_code = ble_advertising_advdata_update(p_adv_ctx, &advdata, &srdata);
-    APP_ERROR_CHECK(err_code);
+                advdata.name_type             = BLE_ADVDATA_NO_NAME;
+                advdata.p_manuf_specific_data = &manuf_specific_data;
+                advdata.flags                 = (BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED);
+                // Not connectable, no uuids advertised to avoid access to NUS
+                err_code = ble_advertising_advdata_update(p_adv_ctx, &advdata, NULL);
+                APP_ERROR_CHECK(err_code);
+                ret_ibeacons = true;
+                break;
+            } else {
+                // fallthru to next type
+            }
+        }
+        case ADVERT_TYPE_TELEMETRY:
+        {
+            advdata.name_type             = BLE_ADVDATA_FULL_NAME;
+            // depending on if we accept connections or not, advert data is different
+            if (cfg_getConnectable()) {
+                advdata.flags                 = (BLE_GAP_ADV_FLAG_LE_GENERAL_DISC_MODE |
+                                                BLE_GAP_ADV_FLAG_BR_EDR_NOT_SUPPORTED);
+                // advertise short list of services, and say more are available (stack takes care of sending the others when someone connects to me)
+                advdata.uuids_more_available.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
+                advdata.uuids_more_available.p_uuids  = m_adv_uuids;
+                /* no need to have SR uuid list, stack takes care of sending other declared services apparenrtly
+                advdata.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
+                advdata.uuids_complete.p_uuids  = m_adv_uuids;
+                srdata.uuids_more_available.uuid_cnt = sizeof(m_sr_uuids) / sizeof(m_sr_uuids[0]);
+                srdata.uuids_more_available.p_uuids  = m_sr_uuids;
+                */
+            } else {
+                // Not connectable, no more uuids advertised in advert to avoid access to NUS
+                advdata.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
+                advdata.uuids_complete.p_uuids  = m_adv_uuids;
+            }
+            srdata.name_type = BLE_ADVDATA_FULL_NAME;
+            srdata.short_name_len = 8;      // get at least id part (maj/min in hex)
+            srdata.p_tx_power_level = p_txPower;
+            err_code = ble_advertising_advdata_update(p_adv_ctx, &advdata, &srdata);
+            APP_ERROR_CHECK(err_code);
+            break;        
+        }
+        default:
+        {
+            log_warn("unknown advert type requested %d", _ctx.advertType);
+            break;
+        }
+    } 
+    return ret_ibeacons;
 }
  
 
@@ -764,7 +947,7 @@ static bool advertising_check_start()
     cfg_resetPasswordOk();
     // create context
     _ctx.txPower = cfg_getTXPOWER_Level();
-    advertising_update(&_ctx.adv_ctx, &_ctx.txPower);
+    bool ibeacons = advertising_update(&m_advertising, &_ctx.txPower);
     // Change name
     char* advname = cfg_getAdvName();
     memset(_ctx.advName, 0, sizeof(_ctx.advName));
@@ -772,24 +955,33 @@ static bool advertising_check_start()
     sd_ble_gap_device_name_set(&sec_mode,
                             (const uint8_t *)_ctx.advName,
                                 strlen(_ctx.advName));
-    log_info("set advName to %s",_ctx.advName);
+    sd_ble_gap_appearance_set(BLE_APPEARANCE_GENERIC_HID);
+//    log_info("set advName to %s",_ctx.advName);
 
     // Change tx power level
-    // NOT RUIRED? sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_ADV, _ctx.adv_ctx.adv_handle, cfg_getTXPOWER_Level());
+    // NOT RUIRED? sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_ADV, m_advertising.adv_handle, cfg_getTXPOWER_Level());
 
     // only advertise if we want to be connectable, or we are ibeaconning, and we are NOT scanning
-    if ((cfg_getConnectable() || ibb_isBeaconning())) // && ibs_is_scan_active()==false)
+    if ((cfg_getConnectable() || cfg_isIBeaconning())) // && ibs_is_scan_active()==false)
     {
-        err_code = ble_advertising_start(&_ctx.adv_ctx, ibb_isBeaconning()?BLE_ADV_MODE_FAST:BLE_ADV_EVT_SLOW);
-        APP_ERROR_CHECK(err_code);
-        log_info("adv check : connectable [%s] beaconning : %s", cfg_getAdvName(), ibb_isBeaconning()?"yes":"no");
+        if (ibeacons) {
+            err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_SLOW);
+            APP_ERROR_CHECK(err_code);
+            led_indication(INDICATE_ADVERTISING_IBEACON);
+        } else {
+            err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_SLOW);
+            APP_ERROR_CHECK(err_code);
+            led_indication(INDICATE_ADVERTISING_TELEMETERY);
+        }
+        log_info("adv check : connectable [%s] beaconning : %s", cfg_getAdvName(), ibeacons?"yes":"no");
         return true;
     } else {
         //idle the adverts
-        err_code = ble_advertising_start(&_ctx.adv_ctx, BLE_ADV_MODE_IDLE);
+        err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_IDLE);
         APP_ERROR_CHECK(err_code);
-        sd_ble_gap_adv_stop(_ctx.adv_ctx.adv_handle);
-        log_info("adv check: no beaconning");
+        led_indication(INDICATE_IDLE);
+        //sd_ble_gap_adv_stop(m_advertising.adv_handle);
+        log_info("adv check: stopped beaconning");
         return false;
     }
 }
@@ -840,6 +1032,11 @@ void app_setFlashIdle() {
 bool app_isFlashBusy() {
     return _ctx.flashBusy;      // they would like to know if its busy right now
 }
+static void battery_update_timer_cb(void * p_context) {
+    // TODO read battery level
+    uint8_t battery_level = 99;
+    ble_bas_battery_level_update(&m_bas, battery_level, BLE_CONN_HANDLE_ALL);
+}
 
 static void button1_event(uint8_t pin_no, uint8_t button_action) {
     if (button_action==APP_BUTTON_RELEASE) {
@@ -866,9 +1063,10 @@ static void button3_event(uint8_t pin_no, uint8_t button_action) {
 
 }
 
+
 static void init_stage(int s) {
     switch(s) {
-        case 0:
+        case INDICATE_STARTUP_0:
             for(int i=0;i<2;i++) {
                 bsp_board_led_on(0);
                 nrf_delay_ms(500);
@@ -876,22 +1074,22 @@ static void init_stage(int s) {
                 nrf_delay_ms(500);
             }
             break;
-        case 1:
+        case INDICATE_STARTUP_1:
             bsp_board_led_on(0);
             bsp_board_led_off(1);
             nrf_delay_ms(1000);
             break;
-        case 2:
+        case INDICATE_STARTUP_2:
             bsp_board_led_off(0);
             bsp_board_led_on(1);
             nrf_delay_ms(1000);
             break;
-        case 3:
+        case INDICATE_STARTUP_3:
             bsp_board_led_on(0);
             bsp_board_led_on(1);
             nrf_delay_ms(1000);
             break;
-        case 4:
+        case INDICATE_STARTUP_4:
             bsp_board_led_off(0);
             bsp_board_led_off(1);
             nrf_delay_ms(200);
@@ -902,22 +1100,38 @@ static void init_stage(int s) {
                 nrf_delay_ms(200);
             }
             break;
-        case 5:
+        case INDICATE_STARTUP_5:
             bsp_board_led_on(0);
             bsp_board_led_off(1);
             nrf_delay_ms(1000);
             break;
-        case 6:
+        case INDICATE_STARTUP_6:
             bsp_board_led_off(0);
             bsp_board_led_on(1);
             nrf_delay_ms(1000);
             break;
-        case 7:
+        case INDICATE_STARTUP_7:
             bsp_board_led_on(0);
             bsp_board_led_on(1);
             nrf_delay_ms(1000);
             break;
-        case 255:
+        case INDICATE_IDLE:
+            bsp_board_led_off(0);
+            bsp_board_led_off(1);
+            break;
+        case INDICATE_ADVERTISING_IBEACON:
+            bsp_board_led_on(0);
+            bsp_board_led_off(1);
+            break;
+        case INDICATE_ADVERTISING_TELEMETERY:
+            bsp_board_led_off(0);
+            bsp_board_led_on(1);
+            break;
+        case INDICATE_CONNECTED:
+            bsp_board_led_on(0);
+            bsp_board_led_on(1);
+            break;
+        case INDICATE_HALT:
             while(true) {
                 bsp_board_led_on(0);
                 bsp_board_led_on(1);
@@ -940,20 +1154,21 @@ static void init_stage(int s) {
 
     }
 }
+
 int main(void)
 {
     /* Configure board. */
     bsp_board_init(BSP_INIT_LEDS);
-    init_stage(0);
+    init_stage(INDICATE_STARTUP_0);
 
     system_init();
 
-    init_stage(1);
+    init_stage(INDICATE_STARTUP_1);
 
     // Init uart asap in case using for logs also
     comm_uart_init(); 
 
-    init_stage(2);
+    init_stage(INDICATE_STARTUP_2);
 #ifdef RELEASE_BUILD
     wlog_init(-1);      // replace by 0 to get logs on uart
 #else 
@@ -962,17 +1177,17 @@ int main(void)
 #endif
 
     log_error("STARTING");
-    init_stage(3);
+    init_stage(INDICATE_STARTUP_3);
 
     cfg_init();              
     log_info("config/log init done");
 
-    init_stage(4);
+    init_stage(INDICATE_STARTUP_4);
     
     ble_init();
     log_info("ble system init done");
 
-    init_stage(5);
+    init_stage(INDICATE_STARTUP_5);
 
     // Tell host we are ready to rock
     comm_uart_tx((uint8_t *)"READY\r\n",7, NULL);
@@ -980,7 +1195,10 @@ int main(void)
     advertising_check_start();
     log_info("advertising setup done");
 
-    init_stage(6);
+    init_stage(INDICATE_STARTUP_6);
+
+    // Start timer for battery rad updates
+    app_timer_start(m_battery_timer_id, APP_BATTERY_TIME_PERIOD,NULL);
 
     //todo remove uart disabled at 10s of ibeaconning for power
     /*                    
@@ -992,7 +1210,7 @@ int main(void)
     */
 
     log_info("waiting for commands");
-    init_stage(7);
+    init_stage(INDICATE_IDLE);
 
     for (;;)
     {        

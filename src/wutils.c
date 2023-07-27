@@ -23,6 +23,7 @@
 #include "wutils.h"
 #include "main.h"
 #include "comm_uart.h"
+#include "nrf_delay.h"
 
 // assert gets stack to determine address of line that called it to dump in log
 // also write stack into prom for reboot analysis

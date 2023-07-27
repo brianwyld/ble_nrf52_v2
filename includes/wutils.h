@@ -55,6 +55,9 @@ enum LOGS_LEVEL { LOGS_DEBUG, LOGS_INFO, LOGS_RUN, LOGS_OFF };
 #define assert(__e) {do{ (void)sizeof((__e)); }while(0);}
 #else /* NDEBUG */ 
 #define assert(__e) ((__e) ? (void)0 : wassert_fn(NULL, 0))
+#undef APP_ERROR_CHECK
+#define APP_ERROR_CHECK(d)  if (d!=NRF_SUCCESS) { log_error("at %d in %s, error code %d", __LINE__, __FILE__, d); }
+#warning DEBUG assert/error checks enabled
 #endif /* NDEBUG */
 // Note: info, warn and error logs are in the image for dev and release, but may not be output depending on log level.
 #define log_info log_info_fn

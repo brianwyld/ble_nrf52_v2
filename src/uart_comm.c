@@ -18,7 +18,13 @@
 #include "device_config.h"
 
 #define COMM_UART_NB    (0)
+#if defined (UART_PRESENT)
 #define COMM_UART_BAUDRATE  (UART_BAUDRATE_BAUDRATE_Baud115200)     // MUST USE THE CONSTANT NOT A SIMPLE VALUE
+#warning standard uart
+#else
+#define COMM_UART_BAUDRATE  (UARTE_BAUDRATE_BAUDRATE_Baud115200)
+#warning easydma uart
+#endif
 #define MAX_RX_LINE (100)            // AT+IB_START E2C56DB5DFFB48D2B060D0F5A71096E0,8201,135C,00,0200,-10   is longest command and is 67
 
 static struct {

@@ -60,7 +60,7 @@ static struct {
     .beacon_uuid_tab = {0xE2, 0xC5, 0x6D, 0xB5, 0xDF, 0xFB, 0x48, 0xD2, 0xB0, 0x60, 0xD0, 0xF5, 0xA7, 0x10, 0x96, 0xE0},
     .nameAdv = "FFFFFFFF_W", 
     .isConnectable=true,
-    .isIBeaconning=false,
+    .isIBeaconning=true,
     .company_id = 0x004C, 
     .extra_value = 0xC3,
     .passwordTab = {'1', '5', '1', '9'},
