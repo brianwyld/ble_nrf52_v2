@@ -354,6 +354,9 @@ binsize: bin
 disassemble:
 	$(OBJDUMP) -hd $(OUTPUT_DIRFILE).elf > $(OUTPUT_DIRFILE).lss
 
+merge:
+	mergehex --merge $(SDKROOT)\components\softdevice\s132\hex\s132_nrf52_7.2.0_softdevice.hex $(OUTPUT_DIRFILE).hex --output $(OUTPUT_DIRFILE)_full.hex
+
 itall: clean release hex bin disassemble size
 
 itall_debug: clean debug hex bin disassemble size

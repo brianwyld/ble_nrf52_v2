@@ -49,7 +49,6 @@ static struct {
     bool isIBeaconning;        // is it currently beaconning (in case of unexpected reset)
     int8_t txPowerLevel; // Default -4dBm
     uint8_t extra_value;    // usually related to tx power
-    bool isPasswordOK;              // Indicates if password has been validated or not
     bool flashWriteReq;
 } _ctx = {
     .magic=MAGIC_CFG_SAVED,             // So that if config updated and saved, the next reboot will find it        
@@ -66,8 +65,6 @@ static struct {
     .passwordTab = {'1', '5', '1', '9'},
     .masterPasswordTab = {'6', '0', '6', '7'},
 };
-// Not in config
-static bool _isPasswordOK = false;
 
 // Refresh advertised name (eg when change maj/minor)
 // Note we put maj/min at front so can see it with short name of 8 chars
@@ -82,7 +79,6 @@ void cfg_init() {
     // Check if our magic number is there and read from page (ie valid config present) otherwise use compile time defaults
     uint32_t magic=0;
     hal_bsp_nvmRead(0, 4, (uint8_t*)&magic);
-    magic=0;        // BW NVM broken for now
     if (magic==MAGIC_CFG_PROD) {
         // Only the major/minor were written by production process
         _ctx.major_value = hal_bsp_nvmRead16(4);
@@ -100,6 +96,7 @@ void cfg_init() {
         log_info("config initialised from defaults[%s]", _ctx.nameAdv);
     }
 }
+
 // Request update of NVM with new config
 static void configUpdateRequest() {
     // Set flag to do it in main loop (for ble timing reasons)
@@ -107,12 +104,14 @@ static void configUpdateRequest() {
 }
 void cfg_writeCheck() {
     if (_ctx.flashWriteReq) {
-        log_info("FLASH WRITE");
+        //log_info("FLASH WRITE");
+        //log_mem((uint8_t*)0x77C00, sizeof(_ctx));
+        //log_mem((uint8_t*)&_ctx, sizeof(_ctx));
         app_setFlashBusy();     // not sure if this works
-        // Write entire structure
-        // TODO ADD PAGE ERASE ETC
+        // Write entire structure each time
         hal_bsp_nvmWrite(0, sizeof(_ctx), (uint8_t*)&_ctx);
-        log_info("FLASH WRITE DONE");
+        //log_info("FLASH WRITE DONE");
+        //log_mem((uint8_t*)0x77C00, sizeof(_ctx));
     }
     _ctx.flashWriteReq = false;
 }
@@ -224,14 +223,6 @@ char* cfg_getAdvName() {
     return _ctx.nameAdv;
 }
 
-void cfg_resetPasswordOk()
-{
-   _isPasswordOK = false;
-}
-
-bool cfg_isPasswordOk() {
-    return _isPasswordOK;
-} 
 bool cfg_checkPassword( char* given )
 {
     if (given==NULL) {
@@ -239,11 +230,9 @@ bool cfg_checkPassword( char* given )
     }
     for(int i=0;i<PASSWORD_LEN;i++) {
         if (_ctx.passwordTab[i]!=given[i]) {
-            _isPasswordOK = false;
             return false;
         }
     }
-    _isPasswordOK = true;
     return true;
 }
 bool cfg_setPassword(char* oldp, char* newp) 
@@ -251,14 +240,11 @@ bool cfg_setPassword(char* oldp, char* newp)
     if (newp==NULL) {
         return false;
     }
-    if (cfg_isPasswordOk() || cfg_checkPassword(oldp)) {
-        for(int i=0;i<PASSWORD_LEN;i++) {
-            _ctx.passwordTab[i]=newp[i];
-        }
-        configUpdateRequest();
-        return true;
+    for(int i=0;i<PASSWORD_LEN;i++) {
+        _ctx.passwordTab[i]=newp[i];
     }
-    return false;
+    configUpdateRequest();
+    return true;
 } 
 void cfg_setCompanyID(uint16_t value)
 {
@@ -365,11 +351,13 @@ int cfg_setByKey(uint16_t key, uint8_t* vp, int len) {
         case DCFG_KEY_UUID: {
             int l = (len<UUID128_SIZE ? len : UUID128_SIZE);
             memcpy(_ctx.beacon_uuid_tab, vp, l);
+            configUpdateRequest();
             return UUID128_SIZE;
         }
         case DCFG_KEY_PASS: {
             int l = (len<PASSWORD_LEN ? len : PASSWORD_LEN);
             memcpy(_ctx.passwordTab, vp, l);
+            configUpdateRequest();
             return PASSWORD_LEN;
         }
         default:

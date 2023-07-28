@@ -80,6 +80,7 @@ void log_noout_fn(const char* sl, ...);
 uint8_t get_log_level();
 const char* get_log_level_str();
 void set_log_level(uint8_t lev);
+void log_mem(uint8_t* p, int len);
 // More utility functions
 /*
  * Write a 32 bit unsigned int as LE format into a buffer at specified offset. 

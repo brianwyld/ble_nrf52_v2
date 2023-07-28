@@ -59,10 +59,12 @@ static bool log_check_uart();
 static void do_log(char lev, const char* ls, va_list vl) {
     // protect here with a mutex?
     // level and timestamp
-    uint32_t now = 0;       // TODO
-    sprintf(_buf, "%c%03d.%1d:", lev, (int)((now/1000)%1000), (int)((now/100)%10));
-    // add log
-    vsprintf(_buf+7, ls, vl);
+    uint32_t now = 0;       // TODO - no timestamp available ???
+    // Note all log lines MUST start with a "*" (lets any remote guy discard them)
+    //sprintf(_buf, "*%c%03d.%1d:", lev, (int)((now/1000)%1000), (int)((now/100)%10));
+    sprintf(_buf, "*%c:", lev);
+    // add log after prefix (3 chars)
+    vsprintf(_buf+3, ls, vl);
     // add CRLF to end, checking we didn't go off end
     int len = strlen(_buf);     //, MAX_LOGSZ);
     if ((len+3)>=MAX_LOGSZ) {
@@ -180,6 +182,12 @@ void wlog_init(int uartNb) {
     _uartDev = uartNb;
 }
 
+void log_mem(uint8_t* p, int len) {
+    for (int i=0;i<len;i+=16) {
+        log_info("%8x : %02x %02x %02x %02x : %02x %02x %02x %02x - %02x %02x %02x %02x : %02x %02x %02x %02x",
+            p, *p++,*p++,*p++,*p++,*p++,*p++,*p++,*p++,*p++,*p++,*p++,*p++,*p++,*p++,*p++,*p++);
+    }
+}
 // More utility functions
 /*
  * Write a 32 bit unsigned int as LE format into a buffer at specified offset. 

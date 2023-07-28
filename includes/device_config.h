@@ -29,8 +29,6 @@ void cfg_setConnectable(bool value);
 bool cfg_getConnectable( void );
 bool cfg_isIBeaconning( void );
 void cfg_setIsIBeaconning(bool value);
-void cfg_resetPasswordOk();
-bool cfg_isPasswordOk();
 bool cfg_checkPassword( char* given );
 bool cfg_setPassword(char* oldp, char* newp);
 void cfg_setExtra_Value(uint8_t extra);

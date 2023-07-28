@@ -102,9 +102,11 @@ static struct {
     UART_TX_FN_T passThru_txfn2;        // and this the other
     uint8_t ncmds;
     ATCMD_DEF_t* cmds;
+    bool authOk;
 } _ctx = {
     .cmds=ATCMDS,
     .ncmds= sizeof(ATCMDS)/sizeof(ATCMDS[0]),
+    .authOk = false,
 };
 
 // External api
@@ -202,6 +204,15 @@ void at_process_line(char* line, UART_TX_FN_T utx_fn) {
 }
 
 // internals
+bool authenticated() {
+    return _ctx.authOk;
+}
+bool clear_authentication() {
+    _ctx.authOk = false;
+}
+bool set_authentication() {
+    _ctx.authOk = true;
+}
 
 // AT command processing
 static ATRESULT atcmd_listcmds(uint8_t nargs, char* argv[], void* odev) {
@@ -320,7 +331,8 @@ static ATRESULT atcmd_getcfg(uint8_t nargs, char* argv[], void* odev) {
 }
 static ATRESULT atcmd_setcfg(uint8_t nargs, char* argv[], void* odev) {
     // Must have done a password login to set params
-    if (!cfg_isPasswordOk()) {
+    if (!authenticated()) {
+        wconsole_println(odev, "Not authenticated");
         return ATCMD_GENERR;
     }
 
@@ -431,7 +443,7 @@ static ATRESULT atcmd_connect(uint8_t nargs, char* argv[], void* odev) {
 
     if (nargs==1 || (nargs==2 && argv[1][0]=='U')) {
         // Must have done a password login to be allowed to connect if coming from remote BLE guy
-        if (!cfg_isPasswordOk()) {
+        if (!authenticated()) {
             return ATCMD_GENERR;
         }
         // the sender is one side (assumed to be a remote BLE) and the comm UART is forced as the other side
@@ -481,22 +493,26 @@ static ATRESULT atcmd_password(uint8_t nargs, char* argv[], void* odev) {
     if (nargs==2) {
         // Check password
         if (cfg_checkPassword(argv[1])) {
+            set_authentication();
             return ATCMD_OK;
         }
     } else if (nargs==3) {
         if (strcmp("V", argv[1])==0) {
             if (cfg_checkPassword(argv[2])) {
+                set_authentication();
                 return ATCMD_OK;
             }
         } else if (strcmp("S", argv[1])==0) {
             // set password if already logged in (old pass is passed as NULL)
-            if (cfg_setPassword(NULL, argv[2])) {
-                return ATCMD_OK;
+            if (authenticated()) {
+                if (cfg_setPassword(NULL, argv[2])) {
+                    return ATCMD_OK;
+                }
             }
         }
     }
     // Else not
-    cfg_resetPasswordOk();
+    clear_authentication();
     return ATCMD_GENERR;
 }
 
@@ -621,7 +637,8 @@ static bool wconsole_println(void* dev, const char* l, ...) {
     bool ret = true;
     va_list vl;
     va_start(vl, l);
-    vsprintf((char*)&_ctx.txbuf[0], l, vl);
+    _ctx.txbuf[0] = '+';        // All AT response lines MUST start with a "+"
+    vsprintf((char*)&_ctx.txbuf[1], l, vl);     // response goes in at offset 1
     int len = strlen((const char*)&_ctx.txbuf[0]);  //, MAX_TXSZ);        why no strnlen in gcc libc??
     if (len>=MAX_TXSZ) {
         // oops might just have broken stuff...

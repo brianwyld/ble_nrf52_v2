@@ -25,6 +25,11 @@ extern "C" {
 void at_process_input(char* data, UART_TX_FN_T source_txfn);
 // process at cmd locally only
 void at_process_line(char* line, UART_TX_FN_T utx_fn);
+// Has remote been authenticated?
+bool authenticated();
+bool clear_authentication();
+bool set_authentication();      // Session can be authenticated by at command but also by BLE bonding
+
 #ifdef __cplusplus
 }
 #endif

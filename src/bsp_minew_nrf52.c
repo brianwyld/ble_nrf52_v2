@@ -94,8 +94,8 @@ int hal_bsp_uart_tx(int uartNb, uint8_t* d, int len) {
 // See nrf52_xxaa.ld for where these come from...
 extern volatile uint32_t __FLASH_CONFIG_BASE_ADDR[];
 extern volatile uint32_t __FLASH_CONFIG_SZ[];
-static uint32_t FLASH_CONFIG_SZ = ((uint32_t)__FLASH_CONFIG_SZ);      //(0x1000)                    // 4K
-static uint32_t FLASH_CONFIG_BASE_ADDR = (((uint32_t)__FLASH_CONFIG_BASE_ADDR));   //0x338A0)        // FLASH_CFG in .ld file
+static uint32_t FLASH_CONFIG_SZ = ((uint32_t)__FLASH_CONFIG_SZ);      // FLASH_CFG in .ld file
+static uint32_t FLASH_CONFIG_BASE_ADDR = (((uint32_t)__FLASH_CONFIG_BASE_ADDR));   // FLASH_CFG in .ld file
 
 uint16_t hal_bsp_nvmSize() {
     return (uint16_t)FLASH_CONFIG_SZ;
@@ -173,15 +173,19 @@ static bool wait_for_flash(uint32_t timeout_ms) {
     // Convert timeout to n loops of delay of 10ms
     uint32_t nloops = (timeout_ms/10)+1;
     for(int i=0;i<nloops;i++) {
+        if (!app_isFlashBusy()) {
+            return true;
+        }
+        /*
         uint32_t err_code=sd_evt_get(&evt);
         if (err_code==NRF_SUCCESS) {
             if (evt==NRF_EVT_FLASH_OPERATION_SUCCESS ||
                     evt==NRF_EVT_FLASH_OPERATION_ERROR) {
                 return true;
             }
-        } else {
-            nrf_delay_ms(10);
         }
+        */
+        nrf_delay_ms(10);
     }
     return false;
 }
@@ -189,28 +193,40 @@ bool hal_bsp_nvmWrite(uint16_t off, uint8_t len, uint8_t* buf) {
     // If writing a block to offset 0, we assume you are writing the entire page rather than just bits
     if (off==0) {
         uint32_t* addr_u32aligned = (uint32_t*)(FLASH_CONFIG_BASE_ADDR);
+        uint32_t FLASH_PAGE_SIZE= *((uint32_t*)0x10000010);   // 4K flash pages on nrf52 (1K on nrf51) - apparently no API to read this so must read from FICR/CODEPAGESIZE 
+        uint32_t flash_page = ((uint32_t)addr_u32aligned)/FLASH_PAGE_SIZE;
         uint32_t status=NRF_SUCCESS;
         // Erase page
         app_setFlashBusy();
         do
         {
-            log_info("erasing page %d", ((uint32_t)addr_u32aligned)/1024);
-            status = sd_flash_page_erase(((uint32_t)addr_u32aligned)/1024);
+            //log_info("addr %8x with page size %4x means erasing page %4x", addr_u32aligned, FLASH_PAGE_SIZE, flash_page);
+            status = sd_flash_page_erase(flash_page);
         } while (status == NRF_ERROR_BUSY);     // In case its still processing the previous write
-        if (wait_for_flash(1000)) {
-            log_info("page erased, got system event to say done");
+        if (status!=NRF_SUCCESS) {
+            log_error("flash page erase failed %d", status);
+            app_setFlashIdle();
+            return false;
+        }
+        if (wait_for_flash(5000)) {
+            //log_info("page erased, got system event to say done");
         } else {
             log_warn("page erased but timeout waiting for done event");
         }
         app_setFlashBusy();
         do
         {
-            log_info("writing new page");
+            //log_info("writing new page");
             status = sd_flash_write(addr_u32aligned, (uint32_t*)buf, (len/4)+1);        // Write rounded up to nearest 32 bit length
         } while (status == NRF_ERROR_BUSY);     // In case its still processing the previous write
-        log_info("page written, waiting for system event to say done");
+        if (status!=NRF_SUCCESS) {
+            log_error("flash data write failed %d", status);
+            app_setFlashIdle();
+            return false;
+        }
+        //log_info("page written, waiting for system event to say done");
         if (wait_for_flash(1000)) {
-            log_info("page written, got system event to say done");
+            //log_info("page written, got system event to say done");
         } else {
             log_warn("page written but timeout waiting for done event");
         }

@@ -66,6 +66,11 @@ Current version is included in the gitlab project. To update:
 - download from https://www.nordicsemi.com/Products/Development-software/nrf5-sdk/download
 - Unzip and copy to src tree in ./nrfsdk/
 
+Also download the nrf tools:
+- https://www.nordicsemi.com/Products/Development-tools/nrf-command-line-tools/download#infotabs
+
+In particular nrfjprog.exe is good to flash device using a jlink probe.
+
 ## Make
 Get a version appropriate for your system and ensure it is in the PATH.
 
@@ -140,7 +145,25 @@ After that you can launch debugging as usual on vscode.
 
 # Warnings
 ## Known issues
-- none, its all perfect
+- >1  button causes the app_button init to fail
+
+## TODO
+- add means to build initial flash config as a hex file
+- add build time init of modules depending on the build-time hardware config
+    - direct button input
+    - direct LED output
+    - I2C setup
+    - MCP23008 ioexpander driver
+    - button input via MCP
+    - LED output via MCP
+    - OLED driver + AT commands to display messages
+    - I2S output driver + AT commands for audio play
+    - PDM input driver + AT commands for audio record
+- add button -> wakeup to UART host feature
+- add AT command to get reason for wakeup by host (button, BLE wakeup, ibeacon scan done etc)
+- add AT commands for control of LED(s)
+- low power operation tuning
+- proper BLE config via GATT chars instead of AT commands...
 
 ## FLASH layout
 

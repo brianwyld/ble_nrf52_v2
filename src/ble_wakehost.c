@@ -101,7 +101,6 @@ uint32_t ble_wakeup_init(ble_wakeup_handler_t whandler)
     // Add a custom base UUID.
     err_code = sd_ble_uuid_vs_add(&wakeup_base_uuid, &_ctx.uuid_type);
     APP_ERROR_CHECK(err_code);
-    log_info("wakeservice registers 128bit uuid gets type %d", _ctx.uuid_type);
 
     ble_uuid.type = _ctx.uuid_type;
     ble_uuid.uuid = BLE_UUID_WAKEUP_SERVICE;

@@ -215,7 +215,7 @@ typedef enum {
 
 void led_indication(IND_e ind) {
     init_stage(ind);
-    log_info("led : state %d",ind);
+    //log_info("led : state %d",ind);
     // TODO
 }
 
@@ -283,14 +283,14 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
     switch (ble_adv_evt)
     {
         case BLE_ADV_EVT_FAST:
-            log_info("evt:advertsing FAST");
+            //log_info("evt:advertsing FAST");
             break;
         case BLE_ADV_EVT_SLOW:
-            log_info("evt:advertsing SLOW");
+            //log_info("evt:advertsing SLOW");
             // if not being an ibeacon we are sending just NUS adverts
             break;
         case BLE_ADV_EVT_IDLE:
-            log_info("evt:advertsing IDLE");
+            //log_info("evt:advertsing IDLE");
         // BW : no sleeping on this job TODO check
 //            sleep_mode_enter();
         break;
@@ -331,7 +331,7 @@ static void ble_evt_dispatch(const ble_evt_t * p_ble_evt, void* p_ctx)
                     err_code = nrf_ble_qwr_conn_handle_assign(&m_qwr, _ctx.m_conn_handle);
                     APP_ERROR_CHECK(err_code);
                     // password check has not been validated for this connection
-                    cfg_resetPasswordOk();
+                    clear_authentication();
                     log_info("evt:gap connect - connected");
                 } else {
                     // Not allowed to connect
@@ -351,6 +351,8 @@ static void ble_evt_dispatch(const ble_evt_t * p_ble_evt, void* p_ctx)
             log_info("evt:gap disconnect");
             led_indication(INDICATE_IDLE);
             _ctx.m_conn_handle = BLE_CONN_HANDLE_INVALID;
+            // any auth is now invalid
+            clear_authentication();
             // Restart advertising if required
             advertising_check_start();
         break; // BLE_GAP_EVT_DISCONNECTED
@@ -383,6 +385,7 @@ static void ble_evt_dispatch(const ble_evt_t * p_ble_evt, void* p_ctx)
             // Pairing not supported
             err_code = sd_ble_gap_sec_params_reply(_ctx.m_conn_handle, BLE_GAP_SEC_STATUS_PAIRING_NOT_SUPP, NULL, NULL);
             APP_ERROR_CHECK(err_code);
+            // TODO If it was, we can do set/clear_authentication() to update status
         break; // BLE_GAP_EVT_SEC_PARAMS_REQUEST
  
         case BLE_GATTS_EVT_SYS_ATTR_MISSING:
@@ -458,7 +461,7 @@ static void ble_evt_dispatch(const ble_evt_t * p_ble_evt, void* p_ctx)
             const ble_gap_evt_adv_set_terminated_t* p_adv_term = &p_ble_evt->evt.gap_evt.params.adv_set_terminated;
             if (p_adv_term->reason==BLE_GAP_EVT_ADV_SET_TERMINATED_REASON_TIMEOUT) {
                 // restart it
-                log_info("advertising restart");
+                //log_info("advertising restart");
                 advertising_check_start();
             } else {
                 log_info("advertising stopped due to %d", p_adv_term->reason);
@@ -474,19 +477,21 @@ static void ble_evt_dispatch(const ble_evt_t * p_ble_evt, void* p_ctx)
 // Callback when system events happen
 static void sys_evt_handler(uint32_t evt_id, void * p_context)
 {
-    log_info("SOC event %d", evt_id);
 
     switch(evt_id)
     {
         case NRF_EVT_FLASH_OPERATION_SUCCESS:
+            //log_info("SOC flash success");
             _ctx.flashBusy = false;
         break;
         
         case NRF_EVT_FLASH_OPERATION_ERROR:
+            log_warn("SOC flash error");
             _ctx.flashBusy = false;         // Still finished though
         break;
         
         default:
+            log_info("SOC event %d", evt_id);
         break;
     }
 }
@@ -943,8 +948,6 @@ static bool advertising_check_start()
     ble_gap_conn_sec_mode_t sec_mode;    
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&sec_mode);
 
-    // password check has not been validated
-    cfg_resetPasswordOk();
     // create context
     _ctx.txPower = cfg_getTXPOWER_Level();
     bool ibeacons = advertising_update(&m_advertising, &_ctx.txPower);
@@ -956,7 +959,7 @@ static bool advertising_check_start()
                             (const uint8_t *)_ctx.advName,
                                 strlen(_ctx.advName));
     sd_ble_gap_appearance_set(BLE_APPEARANCE_GENERIC_HID);
-//    log_info("set advName to %s",_ctx.advName);
+    //    log_info("set advName to %s",_ctx.advName);
 
     // Change tx power level
     // NOT RUIRED? sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_ADV, m_advertising.adv_handle, cfg_getTXPOWER_Level());
@@ -966,14 +969,24 @@ static bool advertising_check_start()
     {
         if (ibeacons) {
             err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_SLOW);
-            APP_ERROR_CHECK(err_code);
+            if (err_code!=NRF_SUCCESS) {
+                log_warn("failed to start advertising, error %d",err_code);
+                // set timer to try again in a bit
+                // TODO
+                return false;
+            }
             led_indication(INDICATE_ADVERTISING_IBEACON);
         } else {
             err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_SLOW);
-            APP_ERROR_CHECK(err_code);
+            if (err_code!=NRF_SUCCESS) {
+                log_warn("failed to start advertising, error %d",err_code);
+                // set timer to try again in a bit
+                // TODO
+                return false;
+            }
             led_indication(INDICATE_ADVERTISING_TELEMETERY);
         }
-        log_info("adv check : connectable [%s] beaconning : %s", cfg_getAdvName(), ibeacons?"yes":"no");
+        //log_info("adv check : connectable [%s] beaconning : %s", cfg_getAdvName(), ibeacons?"yes":"no");
         return true;
     } else {
         //idle the adverts
@@ -1190,7 +1203,7 @@ int main(void)
     init_stage(INDICATE_STARTUP_5);
 
     // Tell host we are ready to rock
-    comm_uart_tx((uint8_t *)"READY\r\n",7, NULL);
+    comm_uart_tx((uint8_t *)"+READY\r\n",8, NULL);
     // Init adv parameters and start if required
     advertising_check_start();
     log_info("advertising setup done");
